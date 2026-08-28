@@ -60,4 +60,6 @@ The customer master supports list search, configurable pagination, add, edit, an
 
 ## SQLite concurrency
 
-SQLite is initialized in WAL mode automatically. Database connections use a 30-second busy timeout by default (configurable with `DATABASE_TIMEOUT`), and registration write connections commit and close immediately after the insert so they do not hold a write connection open longer than necessary.
+SQLite is initialized in WAL mode automatically. Request-scoped connections are closed by Flask teardown, and every explicit write connection is rolled back on failure and closed in `finally`. Registration uses a bounded retry for transient `locked`/`busy` errors and a 5-second SQLite busy timeout.
+
+SQLite is suitable for local development, but it is not a reliable persistent database for Vercel serverless deployments: instances can have separate temporary files and concurrent invocations can contend for the file lock. For the live Vercel site, configure a managed database such as PostgreSQL and migrate the SQLite tables before accepting production registrations.

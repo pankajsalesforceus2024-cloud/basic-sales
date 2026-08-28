@@ -4,6 +4,7 @@ import math
 import re
 import secrets
 import sqlite3
+import time
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
@@ -14,6 +15,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DATABASE = os.path.join(BASE_DIR, "sales_product.db")
 DATABASE_TIMEOUT = float(os.environ.get("DATABASE_TIMEOUT", "30"))
+DATABASE_WRITE_RETRIES = 3
 RESET_TOKEN_MINUTES = int(os.environ.get("RESET_TOKEN_MINUTES", "15"))
 
 app = Flask(__name__)
@@ -27,17 +29,21 @@ app.config.update(
 
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(
-            app.config["DATABASE"], timeout=app.config["DATABASE_TIMEOUT"]
-        )
+        g.db = open_database()
         g.db.row_factory = sqlite3.Row
     return g.db
 
 
-def init_db():
-    db = sqlite3.connect(
+def open_database():
+    connection = sqlite3.connect(
         app.config["DATABASE"], timeout=app.config["DATABASE_TIMEOUT"]
     )
+    connection.execute("PRAGMA busy_timeout = 5000")
+    return connection
+
+
+def init_db():
+    db = open_database()
     try:
         db.execute("PRAGMA journal_mode=WAL")
         db.executescript(
@@ -549,28 +555,38 @@ def register():
         error = None
 
         if error is None:
-            write_db = None
-            try:
-                write_db = sqlite3.connect(
-                    app.config["DATABASE"], timeout=app.config["DATABASE_TIMEOUT"]
-                )
-                write_db.execute(
-                    "INSERT INTO users (username, password, email, created_at) VALUES (?, ?, ?, ?)",
-                    (
-                        username,
-                        generate_password_hash(password),
-                        email,
-                        datetime.now(timezone.utc).isoformat(),
-                    ),
-                )
-                write_db.commit()
-            except sqlite3.IntegrityError:
-                error = "That username is already registered."
-            except sqlite3.OperationalError:
-                error = "The database is busy. Please try again in a moment."
-            finally:
-                if write_db is not None:
-                    write_db.close()
+            for attempt in range(DATABASE_WRITE_RETRIES):
+                write_db = None
+                try:
+                    write_db = open_database()
+                    write_db.execute("BEGIN IMMEDIATE")
+                    write_db.execute(
+                        "INSERT INTO users (username, password, email, created_at) VALUES (?, ?, ?, ?)",
+                        (
+                            username,
+                            generate_password_hash(password),
+                            email,
+                            datetime.now(timezone.utc).isoformat(),
+                        ),
+                    )
+                    write_db.commit()
+                    break
+                except sqlite3.IntegrityError:
+                    error = "That username is already registered."
+                    break
+                except sqlite3.OperationalError as exc:
+                    if write_db is not None:
+                        write_db.rollback()
+                    if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
+                        error = "The database could not save your account."
+                        break
+                    if attempt == DATABASE_WRITE_RETRIES - 1:
+                        error = "The database is busy. Please try again in a moment."
+                    else:
+                        time.sleep(0.1 * (attempt + 1))
+                finally:
+                    if write_db is not None:
+                        write_db.close()
 
         if error:
             flash(error, "danger")
@@ -623,9 +639,7 @@ def forgot_password():
             write_db = None
             reset_created = False
             try:
-                write_db = sqlite3.connect(
-                    app.config["DATABASE"], timeout=app.config["DATABASE_TIMEOUT"]
-                )
+                write_db = open_database()
                 write_db.execute(
                     "DELETE FROM password_reset_tokens WHERE user_id = ? AND used_at IS NULL",
                     (user["id"],),
@@ -678,9 +692,7 @@ def reset_password(token):
         else:
             write_db = None
             try:
-                write_db = sqlite3.connect(
-                    app.config["DATABASE"], timeout=app.config["DATABASE_TIMEOUT"]
-                )
+                write_db = open_database()
                 write_db.execute("BEGIN IMMEDIATE")
                 current_token = write_db.execute(
                     "SELECT user_id FROM password_reset_tokens "
@@ -809,9 +821,7 @@ def add_product():
         if error is None:
             write_db = None
             try:
-                write_db = sqlite3.connect(
-                    app.config["DATABASE"], timeout=app.config["DATABASE_TIMEOUT"]
-                )
+                write_db = open_database()
                 write_db.execute(
                     "INSERT INTO products (name, sku, price_cents, product_group, category, brand, description, unit, cost_price_cents, tax_rate, stock_quantity, reorder_level, supplier, barcode, status, created_at) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -952,9 +962,7 @@ def settings():
     if request.method == "POST":
         write_db = None
         try:
-            write_db = sqlite3.connect(
-                app.config["DATABASE"], timeout=app.config["DATABASE_TIMEOUT"]
-            )
+            write_db = open_database()
             for key in setting_keys:
                 value = "1" if request.form.get(key) == "on" else "0"
                 write_db.execute(
