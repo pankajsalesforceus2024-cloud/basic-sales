@@ -111,9 +111,85 @@ def init_db():
                 setting_key TEXT PRIMARY KEY,
                 setting_value TEXT NOT NULL CHECK (setting_value IN ('0', '1'))
             );
+            CREATE TABLE IF NOT EXISTS company_preferences (
+                preference_key TEXT PRIMARY KEY,
+                company_id INTEGER NOT NULL,
+                FOREIGN KEY (company_id) REFERENCES companies(id)
+            );
+            CREATE TABLE IF NOT EXISTS companies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                address TEXT,
+                phone TEXT,
+                email TEXT,
+                tax_id TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sales (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_no INTEGER NOT NULL,
+                invoice_date TEXT NOT NULL,
+                company_id INTEGER NOT NULL,
+                customer_id INTEGER NOT NULL,
+                customer_name TEXT NOT NULL,
+                challan_no TEXT,
+                challan_date TEXT,
+                order_no TEXT,
+                order_date TEXT,
+                dispatched_by TEXT,
+                bank_detail TEXT,
+                remarks TEXT,
+                gross_total_cents INTEGER NOT NULL DEFAULT 0,
+                other_charges_cents INTEGER NOT NULL DEFAULT 0,
+                taxable_total_cents INTEGER NOT NULL DEFAULT 0,
+                cgst_rate REAL NOT NULL DEFAULT 0,
+                cgst_cents INTEGER NOT NULL DEFAULT 0,
+                sgst_rate REAL NOT NULL DEFAULT 0,
+                sgst_cents INTEGER NOT NULL DEFAULT 0,
+                igst_rate REAL NOT NULL DEFAULT 0,
+                igst_cents INTEGER NOT NULL DEFAULT 0,
+                round_off_cents INTEGER NOT NULL DEFAULT 0,
+                total_amount_cents INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (company_id) REFERENCES companies(id),
+                FOREIGN KEY (customer_id) REFERENCES customers(id)
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_company_invoice
+                ON sales(company_id, invoice_no);
+            CREATE TABLE IF NOT EXISTS sales_details (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sales_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                product_name TEXT NOT NULL,
+                unit TEXT,
+                hsn_code TEXT,
+                quantity REAL NOT NULL CHECK (quantity > 0),
+                unit_price_cents INTEGER NOT NULL CHECK (unit_price_cents >= 0),
+                line_total_cents INTEGER NOT NULL CHECK (line_total_cents >= 0),
+                FOREIGN KEY (sales_id) REFERENCES sales(id) ON DELETE CASCADE,
+                FOREIGN KEY (product_id) REFERENCES products(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(invoice_date);
+            CREATE INDEX IF NOT EXISTS idx_sales_customer ON sales(customer_name);
             INSERT OR IGNORE INTO app_settings (setting_key, setting_value)
                 VALUES ('show_sales_app', '1'), ('show_products', '1'), ('show_customers', '1');
             """
+        )
+        db.execute(
+            "INSERT INTO companies (name, address, phone, email, created_at) "
+            "SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM companies)",
+            (
+                "Default Company",
+                "Add company address in the admin database",
+                "",
+                "",
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        db.execute(
+            "INSERT INTO company_preferences (preference_key, company_id) "
+            "SELECT 'default', id FROM companies ORDER BY id LIMIT 1 "
+            "ON CONFLICT(preference_key) DO NOTHING"
         )
         existing_columns = {
             row[1] for row in db.execute("PRAGMA table_info(products)").fetchall()
@@ -952,13 +1028,14 @@ def edit_product(product_id):
 @app.route("/sales-app")
 @login_required
 def sales_app():
-    return render_template("sales_app.html")
+    return redirect(url_for("sales"))
 
 
 @app.route("/settings", methods=("GET", "POST"))
 @login_required
 def settings():
     setting_keys = ("show_sales_app", "show_products", "show_customers")
+    companies = get_db().execute("SELECT id, name FROM companies ORDER BY name").fetchall()
     if request.method == "POST":
         write_db = None
         try:
@@ -970,8 +1047,24 @@ def settings():
                     "ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value",
                     (key, value),
                 )
+            company_id = request.form.get("default_company_id", "").strip()
+            selected_company = write_db.execute(
+                "SELECT id FROM companies WHERE id = ?", (company_id,)
+            ).fetchone()
+            if selected_company is None:
+                raise ValueError("Select a valid default company.")
+            write_db.execute(
+                "INSERT INTO company_preferences (preference_key, company_id) VALUES ('default', ?) "
+                "ON CONFLICT(preference_key) DO UPDATE SET company_id = excluded.company_id",
+                (company_id,),
+            )
             write_db.commit()
+            session["company_id"] = int(company_id)
             flash("Navigation settings saved.", "success")
+        except ValueError as exc:
+            if write_db is not None:
+                write_db.rollback()
+            flash(str(exc), "danger")
         except sqlite3.OperationalError:
             flash("The database is busy. Please try again in a moment.", "danger")
         finally:
@@ -979,7 +1072,11 @@ def settings():
                 write_db.close()
         return redirect(url_for("settings"))
 
-    return render_template("settings.html", settings=get_app_settings())
+    preference = get_db().execute(
+        "SELECT company_id FROM company_preferences WHERE preference_key = 'default'"
+    ).fetchone()
+    default_company_id = preference["company_id"] if preference else (companies[0]["id"] if companies else None)
+    return render_template("settings.html", settings=get_app_settings(), companies=companies, default_company_id=default_company_id)
 
 
 @app.route("/customers")
@@ -1089,10 +1186,227 @@ def delete_customer(customer_id):
     return redirect(url_for("customers"))
 
 
-@app.route("/sales")
+def _sales_form_context(current_sale=None, search=""):
+    db = get_db()
+    companies = db.execute("SELECT * FROM companies ORDER BY name").fetchall()
+    default_company = db.execute(
+        "SELECT c.* FROM companies c JOIN company_preferences p ON p.company_id = c.id "
+        "WHERE p.preference_key = 'default'"
+    ).fetchone()
+    customers = [dict(row) for row in db.execute(
+        "SELECT id, name, customer_code, phone, email, tax_id, billing_address, "
+        "city, state, postal_code FROM customers WHERE status = 'active' ORDER BY name"
+    ).fetchall()]
+    products = [dict(row) for row in db.execute(
+        "SELECT id, name, sku, price_cents, unit, category FROM products "
+        "WHERE status = 'active' ORDER BY name"
+    ).fetchall()]
+    sales_rows = db.execute(
+        "SELECT id, invoice_no, invoice_date, customer_name, total_amount_cents "
+        "FROM sales WHERE invoice_no LIKE ? OR invoice_date LIKE ? OR customer_name LIKE ? "
+        "ORDER BY id DESC LIMIT 50",
+        (f"%{search}%", f"%{search}%", f"%{search}%"),
+    ).fetchall() if search else db.execute(
+        "SELECT id, invoice_no, invoice_date, customer_name, total_amount_cents "
+        "FROM sales ORDER BY id DESC LIMIT 50"
+    ).fetchall()
+    details = []
+    if current_sale:
+        details = db.execute(
+            "SELECT * FROM sales_details WHERE sales_id = ? ORDER BY id", (current_sale["id"],)
+        ).fetchall()
+    next_invoice = db.execute("SELECT COALESCE(MAX(invoice_no), 0) + 1 FROM sales").fetchone()[0]
+    return {
+        "companies": companies,
+        "customers": customers,
+        "products": products,
+        "sales_rows": sales_rows,
+        "current_sale": current_sale,
+        "sale_details": details,
+        "next_invoice": next_invoice,
+        "search": search,
+        "selected_company_id": current_sale["company_id"] if current_sale else (default_company["id"] if default_company else None),
+        "selected_company": (next((company for company in companies if company["id"] == current_sale["company_id"]), None) if current_sale else default_company),
+        "today": datetime.now().date().isoformat(),
+    }
+
+
+def _money_cents(value, field_name):
+    try:
+        amount = float((value or "0").strip())
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} must be a valid number.")
+    if amount < 0:
+        raise ValueError(f"{field_name} cannot be negative.")
+    return round(amount * 100)
+
+
+def _save_sale(sale_id=None):
+    form = request.form
+    errors = []
+    try:
+        company_id = int(form.get("company_id", "0"))
+        customer_id = int(form.get("customer_id", "0"))
+        invoice_no = int(form.get("invoice_no", "0"))
+    except (TypeError, ValueError):
+        company_id = customer_id = invoice_no = 0
+    db = get_db()
+    company = db.execute("SELECT * FROM companies WHERE id = ?", (company_id,)).fetchone()
+    customer = db.execute("SELECT * FROM customers WHERE id = ? AND status = 'active'", (customer_id,)).fetchone()
+    if company is None:
+        errors.append("Select a company before saving the bill.")
+    if customer is None:
+        errors.append("Select a customer before saving the bill.")
+    if invoice_no <= 0:
+        errors.append("Invoice number must be a positive number.")
+    invoice_date = form.get("invoice_date", "").strip()
+    if not invoice_date:
+        errors.append("Invoice date is required.")
+
+    product_ids = form.getlist("product_id")
+    quantities = form.getlist("quantity")
+    rates = form.getlist("rate")
+    lines = []
+    if not product_ids:
+        errors.append("Add at least one product line.")
+    for index, product_id_value in enumerate(product_ids):
+        try:
+            product_id = int(product_id_value)
+            quantity = float(quantities[index])
+            rate_cents = _money_cents(rates[index], "Rate")
+        except (ValueError, IndexError):
+            errors.append(f"Line {index + 1} has invalid product, quantity, or rate.")
+            continue
+        product = db.execute("SELECT * FROM products WHERE id = ? AND status = 'active'", (product_id,)).fetchone()
+        if product is None:
+            errors.append(f"Line {index + 1} references an unavailable product.")
+        if quantity <= 0 or not quantity.is_integer():
+            errors.append(f"Quantity on line {index + 1} must be a positive whole number.")
+        if product is not None and quantity > 0:
+            lines.append((product, quantity, rate_cents, round(quantity * rate_cents)))
+    try:
+        other_charges = _money_cents(form.get("other_charges"), "Other charges")
+        cgst_rate = float(form.get("cgst_rate", "0") or 0)
+        sgst_rate = float(form.get("sgst_rate", "0") or 0)
+        igst_rate = float(form.get("igst_rate", "0") or 0)
+        if min(cgst_rate, sgst_rate, igst_rate) < 0:
+            raise ValueError("Tax rates cannot be negative.")
+    except ValueError as exc:
+        errors.append(str(exc))
+        other_charges = 0
+        cgst_rate = sgst_rate = igst_rate = 0
+    taxable_total = sum(line[3] for line in lines)
+    cgst_cents = round(taxable_total * cgst_rate / 100)
+    sgst_cents = round(taxable_total * sgst_rate / 100)
+    igst_cents = round(taxable_total * igst_rate / 100)
+    gross_total = taxable_total + other_charges
+    calculated_total = gross_total + cgst_cents + sgst_cents + igst_cents
+    round_off = int(round(calculated_total / 100) * 100 - calculated_total)
+    total_amount = calculated_total + round_off
+    if errors:
+        for error in errors:
+            flash(error, "danger")
+        return render_template("sales_app.html", **_sales_form_context(), form_data=form.to_dict(flat=False), form_errors=errors)
+
+    values = (
+        invoice_no, invoice_date, company_id, customer_id, customer["name"],
+        form.get("challan_no", "").strip() or None, form.get("challan_date", "").strip() or None,
+        form.get("order_no", "").strip() or None, form.get("order_date", "").strip() or None,
+        form.get("dispatched_by", "").strip() or None, form.get("bank_detail", "").strip() or None,
+        form.get("remarks", "").strip() or None, gross_total, other_charges, taxable_total,
+        cgst_rate, cgst_cents, sgst_rate, sgst_cents, igst_rate, igst_cents, round_off, total_amount,
+        datetime.now(timezone.utc).isoformat(),
+    )
+    try:
+        db.execute("BEGIN")
+        if sale_id is None:
+            cursor = db.execute(
+                "INSERT INTO sales (invoice_no, invoice_date, company_id, customer_id, customer_name, "
+                "challan_no, challan_date, order_no, order_date, dispatched_by, bank_detail, remarks, "
+                "gross_total_cents, other_charges_cents, taxable_total_cents, cgst_rate, cgst_cents, "
+                "sgst_rate, sgst_cents, igst_rate, igst_cents, round_off_cents, total_amount_cents, created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", values
+            )
+            sale_id = cursor.lastrowid
+        else:
+            db.execute("UPDATE sales SET invoice_no=?, invoice_date=?, company_id=?, customer_id=?, customer_name=?, challan_no=?, challan_date=?, order_no=?, order_date=?, dispatched_by=?, bank_detail=?, remarks=?, gross_total_cents=?, other_charges_cents=?, taxable_total_cents=?, cgst_rate=?, cgst_cents=?, sgst_rate=?, sgst_cents=?, igst_rate=?, igst_cents=?, round_off_cents=?, total_amount_cents=? WHERE id=?", values[:-1] + (sale_id,))
+            db.execute("DELETE FROM sales_details WHERE sales_id = ?", (sale_id,))
+        db.executemany(
+            "INSERT INTO sales_details (sales_id, product_id, product_name, unit, hsn_code, quantity, unit_price_cents, line_total_cents) VALUES (?,?,?,?,?,?,?,?)",
+            [(sale_id, product["id"], product["name"], product["unit"], product["sku"], quantity, rate_cents, line_total) for product, quantity, rate_cents, line_total in lines],
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash("That invoice number already exists for this company.", "danger")
+        return render_template("sales_app.html", **_sales_form_context(), form_data=form.to_dict(flat=False), form_errors=["Duplicate invoice number."])
+    except sqlite3.Error:
+        db.rollback()
+        flash("The bill could not be saved. Please try again.", "danger")
+        return render_template("sales_app.html", **_sales_form_context(), form_data=form.to_dict(flat=False), form_errors=["Database error."])
+    session["company_id"] = company_id
+    flash("Sales bill saved successfully.", "success")
+    return redirect(url_for("edit_sale", sale_id=sale_id))
+
+
+@app.route("/sales", methods=("GET", "POST"))
 @login_required
 def sales():
-    return render_template("coming_soon.html", section="Sales")
+    if request.method == "POST":
+        return _save_sale()
+    search = request.args.get("q", "").strip()
+    return render_template("sales_app.html", **_sales_form_context(search=search), form_data={}, form_errors=[])
+
+
+@app.route("/sales/new")
+@login_required
+def new_sale():
+    return redirect(url_for("sales"))
+
+
+@app.route("/sales-details")
+@login_required
+def sales_details():
+    search = request.args.get("q", "").strip()
+    like = f"%{search}%"
+    rows = get_db().execute(
+        "SELECT sd.id, s.invoice_no, s.invoice_date, s.customer_name, "
+        "sd.product_name, sd.unit, sd.hsn_code, sd.quantity, sd.unit_price_cents, "
+        "sd.line_total_cents FROM sales_details sd JOIN sales s ON s.id = sd.sales_id "
+        "WHERE ? = '' OR CAST(s.invoice_no AS TEXT) LIKE ? OR s.customer_name LIKE ? "
+        "OR sd.product_name LIKE ? ORDER BY s.invoice_date DESC, sd.id DESC",
+        (search, like, like, like),
+    ).fetchall()
+    return render_template("sales_details.html", sales_details=rows, search=search)
+
+
+@app.route("/sales/<int:sale_id>/edit", methods=("GET", "POST"))
+@login_required
+def edit_sale(sale_id):
+    sale = get_db().execute("SELECT * FROM sales WHERE id = ?", (sale_id,)).fetchone()
+    if sale is None:
+        flash("Sales bill not found.", "danger")
+        return redirect(url_for("sales"))
+    if request.method == "POST":
+        return _save_sale(sale_id)
+    session["company_id"] = sale["company_id"]
+    return render_template("sales_app.html", **_sales_form_context(current_sale=sale), form_data={}, form_errors=[])
+
+
+@app.route("/sales/<int:sale_id>/delete", methods=("POST",))
+@login_required
+def delete_sale(sale_id):
+    try:
+        db = get_db()
+        db.execute("DELETE FROM sales_details WHERE sales_id = ?", (sale_id,))
+        cursor = db.execute("DELETE FROM sales WHERE id = ?", (sale_id,))
+        db.commit()
+    except sqlite3.Error:
+        get_db().rollback()
+        flash("The bill could not be deleted.", "danger")
+        return redirect(url_for("sales"))
+    flash("Sales bill deleted successfully." if cursor.rowcount else "Sales bill not found.", "success" if cursor.rowcount else "danger")
+    return redirect(url_for("sales"))
 
 
 @app.route("/logout")

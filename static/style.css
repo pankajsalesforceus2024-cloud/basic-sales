@@ -299,6 +299,344 @@ body {
 .app-content .action-link {
   background: #fff;
 }
+.sales-workspace {
+  max-width: 1280px;
+}
+.sales-heading {
+  margin-bottom: 26px;
+}
+.sales-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.sales-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.sales-history,
+.sales-form {
+  background: #fff;
+  border: 1px solid #e2e8eb;
+  border-radius: 6px;
+  box-shadow: 0 3px 12px rgba(33, 58, 60, 0.04);
+}
+.sales-history {
+  padding: 16px;
+}
+.sales-search label,
+.sales-form label {
+  display: block;
+  color: #657277;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.sales-search > div {
+  display: flex;
+  margin-top: 7px;
+}
+.sales-search input {
+  min-width: 0;
+  width: 100%;
+  padding: 9px;
+  border: 1px solid #dce4e5;
+  border-radius: 4px 0 0 4px;
+}
+.icon-button {
+  border: 0;
+  color: #fff;
+  background: var(--leaf);
+  border-radius: 0 4px 4px 0;
+  width: 38px;
+}
+.new-bill-button {
+  display: block;
+  margin: 16px 0;
+  text-align: center;
+}
+.bill-list {
+  display: grid;
+  gap: 5px;
+}
+.bill-list-item {
+  display: grid;
+  gap: 3px;
+  padding: 11px;
+  color: var(--ink);
+  border-left: 3px solid transparent;
+  text-decoration: none;
+  background: #f7f9f9;
+}
+.bill-list-item:hover,
+.bill-list-item.active {
+  border-left-color: var(--leaf);
+  background: #eaf5f0;
+}
+.bill-list-item strong {
+  font-size: 0.85rem;
+}
+.bill-list-item span,
+.bill-list-item small {
+  color: #748084;
+  font-size: 0.72rem;
+}
+.empty-note {
+  color: #8b9698;
+  font-size: 0.8rem;
+}
+.bill-search-modal[hidden] {
+  display: none;
+}
+.bill-search-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.bill-search-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(23, 35, 31, 0.42);
+}
+.bill-search-dialog {
+  position: relative;
+  width: min(520px, 100%);
+  max-height: min(680px, 90vh);
+  overflow: auto;
+  padding: 24px;
+  background: #fff;
+  border: 1px solid #dce5e2;
+  border-radius: 8px;
+  box-shadow: 0 18px 55px rgba(23, 35, 31, 0.2);
+}
+.modal-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.modal-heading h2 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+.modal-close {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  color: #657277;
+  background: #f1f5f3;
+  border-radius: 50%;
+  font-size: 1.3rem;
+  cursor: pointer;
+}
+.bill-search-dialog .sales-search {
+  margin-bottom: 18px;
+}
+.bill-search-dialog .bill-list {
+  max-height: 420px;
+  overflow-y: auto;
+}
+.sales-form {
+  overflow: hidden;
+}
+.form-section {
+  padding: 20px 22px;
+  border-bottom: 1px solid #e8eded;
+}
+.company-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f2f8f5;
+}
+.company-strip select {
+  width: min(310px, 45%);
+}
+.company-note {
+  color: #73827d;
+  font-size: 0.75rem;
+}
+.invoice-meta {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+.invoice-meta input,
+.company-strip select,
+.party-section select,
+.items-section select,
+.items-section input,
+.sales-form textarea,
+.tax-inputs input {
+  width: 100%;
+  margin-top: 6px;
+  padding: 9px 10px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid #d7e0df;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.82rem;
+}
+.invoice-meta div:last-child {
+  grid-column: span 2;
+}
+.section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.section-title h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.section-title span {
+  color: #8a9698;
+  font-size: 0.74rem;
+}
+.party-section > select {
+  max-width: 430px;
+}
+.party-details {
+  display: grid;
+  gap: 3px;
+  min-height: 65px;
+  margin-top: 12px;
+  padding: 12px;
+  color: #6f7c7c;
+  background: #f7f9f8;
+  border-left: 3px solid var(--yellow);
+  font-size: 0.78rem;
+}
+.party-details strong {
+  color: var(--ink);
+}
+.items-scroll {
+  overflow-x: auto;
+}
+.sales-items {
+  width: 100%;
+  min-width: 700px;
+  border-collapse: collapse;
+}
+.sales-items th {
+  padding: 9px;
+  color: #60716f;
+  background: #f1f6f4;
+  font-size: 0.67rem;
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
+}
+.sales-items td {
+  padding: 7px;
+  border-bottom: 1px solid #edf1f0;
+  font-size: 0.8rem;
+}
+.sales-items td:nth-child(2),
+.sales-items td:nth-child(3),
+.sales-items td:nth-child(6) {
+  color: #52625f;
+  white-space: nowrap;
+}
+.remove-line {
+  border: 0;
+  color: #b45f51;
+  background: transparent;
+  font-size: 1.3rem;
+  cursor: pointer;
+}
+.sales-items select {
+  min-width: 180px;
+}
+.sales-items input {
+  min-width: 75px;
+}
+.notes-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.sales-form textarea {
+  resize: vertical;
+}
+.totals-section {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 28px;
+}
+.tax-inputs {
+  display: flex;
+  align-items: start;
+  gap: 12px;
+}
+.tax-inputs label {
+  flex: 1;
+}
+.bill-totals {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px 18px;
+  margin: 0;
+  font-size: 0.8rem;
+}
+.bill-totals dt,
+.bill-totals dd {
+  margin: 0;
+}
+.bill-totals dd {
+  text-align: right;
+  font-weight: 700;
+}
+.bill-totals .grand-total {
+  padding-top: 9px;
+  border-top: 2px solid var(--leaf);
+  color: var(--leaf-dark);
+  font-size: 1rem;
+}
+.sales-actions {
+  display: flex;
+  gap: 10px;
+  padding: 18px 22px;
+  background: #f8faf9;
+}
+.btn-danger {
+  color: #a04439;
+  background: #fff0ed;
+  border: 1px solid #f0cbc4;
+}
+@media (max-width: 900px) {
+  .invoice-meta {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .invoice-meta div:last-child {
+    grid-column: auto;
+  }
+  .totals-section {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .company-strip,
+  .tax-inputs,
+  .notes-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .company-strip select {
+    width: 100%;
+  }
+  .app-content {
+    padding: 24px 16px;
+  }
+}
 .app-content .workspace-heading {
   padding-bottom: 30px;
   border-bottom: 1px solid #e1e7e9;

@@ -1,22 +1,161 @@
 {% extends "base.html" %}
-{% block title %}Sales App | Sales{% endblock %}
+{% block title %}Sales Bills | Sales{% endblock %}
 {% block content %}
-<section class="workspace-panel sales-app-panel">
-    <div class="workspace-heading">
+<section class="sales-workspace">
+    <div class="workspace-heading sales-heading">
         <div>
-            <p class="eyebrow">Sales App</p>
-            <h1>Move business<br><em>forward.</em></h1>
-            <p class="dashboard-copy">Start with your product catalogue, then build out the rest of your sales workflow.
-            </p>
+            <p class="eyebrow">Sales billing</p>
+            <h1>Create an <em>invoice.</em></h1>
+            <p class="dashboard-copy">Choose a company, add a party and build the bill in one place.</p>
         </div>
-        <span class="status-chip">App workspace</span>
+        <div class="sales-heading-actions"><button class="btn btn-secondary" id="open-bill-search" type="button">Find
+                bills</button><a class="back-link" href="{{ url_for('dashboard') }}">&#8592; Dashboard</a></div>
     </div>
-    <div class="sales-app-actions">
-        <a class="action-link action-link-primary"
-            href="{{ url_for('products') }}"><strong>Products</strong><small>Browse and maintain your
-                catalogue</small><span>&#8594;</span></a>
-        <a class="action-link" href="{{ url_for('customers') }}"><strong>Customers</strong><small>Customer tools are
-                coming next</small><span>&#8594;</span></a>
+    <div class="sales-layout">
+        <form class="sales-form" method="post"
+            action="{% if current_sale %}{{ url_for('edit_sale', sale_id=current_sale.id) }}{% else %}{{ url_for('sales') }}{% endif %}">
+            <div class="form-section company-strip"><span class="company-label">Creating bill under</span><strong
+                    class="company-name">{% if current_sale %}{% for company in companies %}{% if company.id ==
+                    current_sale.company_id %}{{ company.name }}{% endif %}{% endfor %}{% else %}{{
+                    selected_company.name if selected_company else 'No default company selected' }}{% endif
+                    %}</strong><input type="hidden" name="company_id" id="company-id"
+                    value="{% if current_sale %}{{ current_sale.company_id }}{% else %}{{ selected_company_id or '' }}{% endif %}"><a
+                    class="company-settings-link" href="{{ url_for('settings') }}">Change in Settings</a></div>
+            <div class="form-section invoice-meta">
+                <div><label for="invoice-no">Invoice no.</label><input id="invoice-no" name="invoice_no" type="number"
+                        min="1" value="{{ current_sale.invoice_no if current_sale else next_invoice }}" required></div>
+                <div><label for="invoice-date">Invoice date</label><input id="invoice-date" name="invoice_date"
+                        type="date" value="{{ current_sale.invoice_date if current_sale else today }}" required></div>
+                <div><label for="challan-no">Challan no.</label><input id="challan-no" name="challan_no"
+                        value="{{ current_sale.challan_no if current_sale else '' }}"></div>
+                <div><label for="challan-date">Challan date</label><input id="challan-date" name="challan_date"
+                        type="date" value="{{ current_sale.challan_date if current_sale else '' }}"></div>
+                <div><label for="order-no">Order no.</label><input id="order-no" name="order_no"
+                        value="{{ current_sale.order_no if current_sale else '' }}"></div>
+                <div><label for="order-date">Order date</label><input id="order-date" name="order_date" type="date"
+                        value="{{ current_sale.order_date if current_sale else '' }}"></div>
+                <div><label for="dispatched-by">Dispatched by</label><input id="dispatched-by" name="dispatched_by"
+                        value="{{ current_sale.dispatched_by if current_sale else '' }}"></div>
+            </div>
+            <div class="form-section party-section">
+                <div class="section-title">
+                    <h2>Party information</h2><span>Customer account</span>
+                </div><label for="customer-search">Customer</label><input id="customer-search" class="search-picker"
+                    type="search" list="customer-options" placeholder="Type to search customers..." autocomplete="off"
+                    required>{% for customer in customers %}{% if current_sale and
+                current_sale.customer_id == customer.id %}
+                <script>window.selectedCustomer = {{ customer | tojson }};</script>{% endif %}{% endfor %}
+                <input type="hidden" id="customer-picker" name="customer_id" value="">
+                <datalist id="customer-options">{% for customer in customers %}<option
+                        value="{{ customer.name }} ({{ customer.customer_code }})" data-id="{{ customer.id }}"></option>
+                    {% endfor %}</datalist>
+                <div id="customer-details" class="party-details" aria-live="polite"><span>Select a customer to view
+                        address and contact details.</span></div>
+            </div>
+            <div class="form-section items-section">
+                <div class="section-title">
+                    <h2>Items</h2><button class="btn btn-secondary" id="add-line" type="button">+ Add item</button>
+                </div>
+                <div class="items-scroll">
+                    <table class="sales-items">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Unit</th>
+                                <th>HSN / SKU</th>
+                                <th>Qty.</th>
+                                <th>Rate</th>
+                                <th>Amount</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="item-rows">{% for detail in sale_details %}<tr class="item-row">
+                                <td><input name="product_search" class="product-search search-picker" type="search"
+                                        list="product-options" placeholder="Type product..." autocomplete="off"
+                                        value="{% for product in products %}{% if detail.product_id == product.id %}{{ product.name }}{% endif %}{% endfor %}"
+                                        required><input name="product_id" class="product-picker" type="hidden"
+                                        value="{{ detail.product_id }}"></td>
+                                <td class="item-unit">{{ detail.unit }}</td>
+                                <td class="item-sku">{{ detail.hsn_code }}</td>
+                                <td><input name="quantity" class="quantity" type="number" min="1" step="1"
+                                        value="{{ detail.quantity }}" required></td>
+                                <td><input name="rate" class="rate" type="number" min="0" step="0.01"
+                                        value="{{ '%.2f'|format(detail.unit_price_cents / 100) }}" required></td>
+                                <td class="line-total">{{ '%.2f'|format(detail.line_total_cents / 100) }}</td>
+                                <td><button class="remove-line" title="Remove item" type="button">&times;</button></td>
+                            </tr>{% endfor %}</tbody>
+                    </table>
+                </div>
+                <datalist id="product-options">{% for product in products %}<option value="{{ product.name }}"></option>
+                    {% endfor %}</datalist>
+            </div>
+            <div class="form-section notes-grid">
+                <div><label for="bank-detail">Bank detail</label><textarea id="bank-detail" name="bank_detail"
+                        rows="2">{{ current_sale.bank_detail if current_sale else '' }}</textarea></div>
+                <div><label for="remarks">Remarks</label><textarea id="remarks" name="remarks"
+                        rows="2">{{ current_sale.remarks if current_sale else '' }}</textarea></div>
+            </div>
+            <div class="form-section totals-section">
+                <div class="tax-inputs"><label>Other charges <input name="other_charges" id="other-charges"
+                            type="number" min="0" step="0.01"
+                            value="{{ '%.2f'|format(current_sale.other_charges_cents / 100) if current_sale else '0.00' }}"></label><label>CGST
+                        % <input name="cgst_rate" type="number" min="0" step="0.01"
+                            value="{{ current_sale.cgst_rate if current_sale else '0' }}"></label><label>SGST % <input
+                            name="sgst_rate" type="number" min="0" step="0.01"
+                            value="{{ current_sale.sgst_rate if current_sale else '0' }}"></label><label>IGST % <input
+                            name="igst_rate" type="number" min="0" step="0.01"
+                            value="{{ current_sale.igst_rate if current_sale else '0' }}"></label></div>
+                <dl class="bill-totals">
+                    <dt>Gross total</dt>
+                    <dd id="gross-total">0.00</dd>
+                    <dt>Taxable total</dt>
+                    <dd id="taxable-total">0.00</dd>
+                    <dt>Total tax</dt>
+                    <dd id="total-tax">0.00</dd>
+                    <dt class="grand-total">Net total</dt>
+                    <dd id="net-total" class="grand-total">0.00</dd>
+                </dl>
+            </div>
+            <div class="sales-actions"><button class="btn btn-primary" type="submit">Save bill</button>{% if
+                current_sale %}<button class="btn btn-danger" type="submit"
+                    formaction="{{ url_for('delete_sale', sale_id=current_sale.id) }}" formmethod="post"
+                    onclick="return confirm('Delete this bill?');">Delete</button>{% endif %}</div>
+        </form>
     </div>
 </section>
+<div class="bill-search-modal" id="bill-search-modal" hidden>
+    <div class="bill-search-backdrop" data-close-bill-search></div>
+    <section class="bill-search-dialog" role="dialog" aria-modal="true" aria-labelledby="bill-search-title">
+        <div class="modal-heading">
+            <div>
+                <p class="eyebrow">Sales records</p>
+                <h2 id="bill-search-title">Find bills</h2>
+            </div><button class="modal-close" type="button" aria-label="Close" data-close-bill-search>&times;</button>
+        </div>
+        <form class="sales-search" id="bill-search-form" method="get" action="{{ url_for('sales') }}"><label
+                for="bill-search">Bill number,
+                date or customer</label>
+            <div><input id="bill-search" name="q" value="{{ search }}" placeholder="Start typing to search..."><button
+                    class="icon-button" title="Search" type="submit">&#8981;</button></div>
+        </form>
+        <div class="bill-list" id="bill-search-results" aria-live="polite">{% for bill in sales_rows %}<a
+                class="bill-list-item {% if current_sale and current_sale.id == bill.id %}active{% endif %}"
+                href="{{ url_for('edit_sale', sale_id=bill.id) }}"><strong>#{{ bill.invoice_no }}</strong><span>{{
+                    bill.customer_name }}</span><small>{{ bill.invoice_date }} &middot; {{
+                    '%.2f'|format(bill.total_amount_cents / 100) }}</small></a>{% else %}<p class="empty-note">No bills
+                found.</p>{% endfor %}</div>
+    </section>
+</div>
+<script>
+    const products = {{ products| tojson }}; const customers = {{ customers| tojson }}; const rows = document.querySelector('#item-rows'); const money = value => (Number(value || 0)).toFixed(2);
+    const productList = document.querySelector('#product-options');
+    function addLine(selected = '', quantity = 1, rate = '') { const row = document.createElement('tr'); row.className = 'item-row'; const product = products.find(item => String(item.id) === String(selected)); row.innerHTML = `<td><input name="product_search" class="product-search search-picker" type="search" list="product-options" placeholder="Type product..." autocomplete="off" value="${product ? product.name : ''}" required><input name="product_id" class="product-picker" type="hidden" value="${selected}"></td><td class="item-unit"></td><td class="item-sku"></td><td><input name="quantity" class="quantity" type="number" min="1" step="1" value="${quantity}" required></td><td><input name="rate" class="rate" type="number" min="0" step="0.01" value="${rate}" required></td><td class="line-total">0.00</td><td><button class="remove-line" title="Remove item" type="button">&times;</button></td>`; rows.append(row); updateRow(row); }
+    function selectedProduct(row) { const value = row.querySelector('.product-search').value.trim().toLowerCase(); return products.find(item => item.name.toLowerCase() === value || `${item.name} (${item.sku})`.toLowerCase() === value); }
+    function updateRow(row) { const product = selectedProduct(row); row.querySelector('.product-picker').value = product ? product.id : ''; if (product) { row.querySelector('.item-unit').textContent = product.unit; row.querySelector('.item-sku').textContent = product.sku; if (!row.querySelector('.rate').value) row.querySelector('.rate').value = (product.price_cents / 100).toFixed(2); } else { row.querySelector('.item-unit').textContent = ''; row.querySelector('.item-sku').textContent = ''; } row.querySelector('.line-total').textContent = money(Number(row.querySelector('.quantity').value) * Number(row.querySelector('.rate').value)); updateTotals(); }
+    function updateTotals() { let taxable = 0; document.querySelectorAll('.item-row').forEach(row => taxable += Number(row.querySelector('.quantity').value) * Number(row.querySelector('.rate').value)); const other = Number(document.querySelector('#other-charges').value); const tax = ['cgst_rate', 'sgst_rate', 'igst_rate'].reduce((sum, name) => sum + taxable * Number(document.querySelector(`[name=${name}]`).value) / 100, 0); document.querySelector('#taxable-total').textContent = money(taxable); document.querySelector('#gross-total').textContent = money(taxable + other); document.querySelector('#total-tax').textContent = money(tax); document.querySelector('#net-total').textContent = money(Math.round((taxable + other + tax) * 100) / 100); }
+    function updateCustomer() { const value = document.querySelector('#customer-search').value.trim().toLowerCase(); const customer = customers.find(item => item.name.toLowerCase() === value || `${item.name} (${item.customer_code})`.toLowerCase() === value); document.querySelector('#customer-picker').value = customer ? customer.id : ''; document.querySelector('#customer-details').innerHTML = customer ? `<strong>${customer.name}</strong><span>${customer.billing_address || ''}${customer.city ? ', ' + customer.city : ''}${customer.state ? ', ' + customer.state : ''}</span><span>${customer.phone || ''} ${customer.email || ''}</span><span>Tax ID: ${customer.tax_id || '-'}</span>` : '<span>Select a customer to view address and contact details.</span>'; }
+    function normalizeNumberInput(input, decimals) { if (decimals === 0) input.value = input.value.replace(/\D/g, ''); else input.value = input.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1').replace(new RegExp(`(\\.\\d{${decimals}})\\d+`), '$1'); }
+    document.querySelector('#customer-search').addEventListener('input', updateCustomer); document.querySelector('#add-line').addEventListener('click', () => addLine()); rows.addEventListener('change', event => { if (event.target.matches('.product-search')) updateRow(event.target.closest('.item-row')); }); rows.addEventListener('input', event => { if (event.target.matches('.product-search,.quantity,.rate')) { if (event.target.matches('.quantity')) normalizeNumberInput(event.target, 0); if (event.target.matches('.rate')) normalizeNumberInput(event.target, 2); updateRow(event.target.closest('.item-row')); } }); rows.addEventListener('keydown', event => { if (event.target.matches('.quantity,.rate') && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) { event.preventDefault(); const amount = event.key === 'ArrowUp' ? 1 : -1; event.target.value = Math.max(Number(event.target.min || 0), Number(event.target.value || 0) + amount); normalizeNumberInput(event.target, event.target.matches('.quantity') ? 0 : 2); updateRow(event.target.closest('.item-row')); } }); rows.addEventListener('click', event => { if (event.target.matches('.remove-line')) { if (document.querySelectorAll('.item-row').length > 1) event.target.closest('.item-row').remove(); updateTotals(); } }); document.querySelectorAll('.tax-inputs input').forEach(input => input.addEventListener('input', updateTotals)); if (!document.querySelector('.item-row')) addLine(); else document.querySelectorAll('.item-row').forEach(updateRow); if (window.selectedCustomer) { document.querySelector('#customer-search').value = `${window.selectedCustomer.name} (${window.selectedCustomer.customer_code})`; } updateCustomer();
+    const billSearchModal = document.querySelector('#bill-search-modal'); const billSearchForm = document.querySelector('#bill-search-form'); const billSearchResults = document.querySelector('#bill-search-results'); const openBillSearch = () => { billSearchModal.hidden = false; document.querySelector('#bill-search').focus(); }; const closeBillSearch = () => { billSearchModal.hidden = true; }; document.querySelector('#open-bill-search').addEventListener('click', openBillSearch); billSearchModal.querySelectorAll('[data-close-bill-search]').forEach(element => element.addEventListener('click', closeBillSearch)); document.addEventListener('keydown', event => { if (event.key === 'Escape' && !billSearchModal.hidden) closeBillSearch(); }); billSearchForm.addEventListener('submit', async event => { event.preventDefault(); const query = new URLSearchParams(new FormData(billSearchForm)).toString(); billSearchResults.innerHTML = '<p class="empty-note">Searching...</p>'; try { const response = await fetch(`${billSearchForm.action}?${query}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } }); if (!response.ok) throw new Error('Search failed'); const html = await response.text(); const parsed = new DOMParser().parseFromString(html, 'text/html'); const results = parsed.querySelector('#bill-search-results'); billSearchResults.innerHTML = results ? results.innerHTML : '<p class="empty-note">No bills found.</p>'; } catch (error) { billSearchResults.innerHTML = '<p class="empty-note">Unable to search bills. Try again.</p>'; } });
+</script>
 {% endblock %}

@@ -3,9 +3,15 @@
 {% block content %}
 <section class="workspace-panel settings-panel">
     <p class="eyebrow">App configuration</p>
-    <h1>Navigation <em>settings.</em></h1>
-    <p class="dashboard-copy">Choose which workspace tabs are visible in the app navigation.</p>
+    <h1>Workspace <em>settings.</em></h1>
+    <p class="dashboard-copy">Choose the company used when creating new sales bills.</p>
     <form class="settings-form" method="post">
+        <label class="setting-row setting-company-row" for="default_company_id"><span><strong>Default
+                    company</strong><small>New bills will be created under this company.</small></span><select
+                id="default_company_id" name="default_company_id" required>{% for company in companies %}<option
+                    value="{{ company.id }}" {% if company.id==default_company_id %}selected{% endif %}>{{ company.name
+                    }}</option>{% endfor %}</select></label>
+        <p class="settings-divider">Navigation visibility</p>
         <label class="setting-row" for="show_sales_app"><span><strong>Sales App</strong><small>Sales workspace and
                     product actions</small></span><input id="show_sales_app" name="show_sales_app" type="checkbox" {% if
                 settings.show_sales_app %}checked{% endif %}></label>

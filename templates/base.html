@@ -40,6 +40,22 @@
                 </div>
             </details>
             {% endif %}
+            {% if app_settings.get('show_sales_app', True) %}
+            <details class="sidebar-group" {% if request.endpoint in ('sales', 'new_sale' , 'edit_sale'
+                , 'sales_details' ) %}open{% endif %}>
+                <summary
+                    class="sidebar-link {% if request.endpoint in ('sales', 'new_sale', 'edit_sale', 'sales_details') %}active{% endif %}">
+                    <span class="nav-icon">&#9654;</span><span class="sidebar-group-name">Transaction</span><span
+                        class="group-chevron">&#8964;</span>
+                </summary>
+                <div class="sidebar-submenu">
+                    <a class="sidebar-link sidebar-sublink {% if request.endpoint in ('sales', 'new_sale', 'edit_sale') %}active{% endif %}"
+                        href="{{ url_for('sales') }}"><span class="sub-dot"></span>Sales</a>
+                    <a class="sidebar-link sidebar-sublink {% if request.endpoint == 'sales_details' %}active{% endif %}"
+                        href="{{ url_for('sales_details') }}"><span class="sub-dot"></span>Sales Details</a>
+                </div>
+            </details>
+            {% endif %}
         </nav>
         <div class="sidebar-bottom">
             <a class="sidebar-link {% if request.endpoint == 'settings' %}active{% endif %}"
