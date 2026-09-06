@@ -19,6 +19,10 @@
             <label>Mobile<input name="company_mobile" value="{{ selected_company.mobile or '' }}"></label>
             <label>GST No<input name="company_tax_id" value="{{ selected_company.tax_id or '' }}"></label>
         </div>{% endif %}
+        <label class="setting-row" for="sales_details_default_months"><span><strong>Sales details date
+                    range</strong><small>Load bills from the last number of months by default.</small></span><input
+                id="sales_details_default_months" name="sales_details_default_months" type="number" min="1" step="1"
+                class="setting-number" value="{{ sales_details_default_months }}" required></label>
         <p class="settings-divider">Navigation visibility</p>
         <label class="setting-row" for="show_sales_app"><span><strong>Sales App</strong><small>Sales workspace and
                     product actions</small></span><input id="show_sales_app" name="show_sales_app" type="checkbox" {% if

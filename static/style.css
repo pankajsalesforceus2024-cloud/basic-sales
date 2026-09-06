@@ -1464,6 +1464,40 @@ a {
   font: inherit;
   font-size: 0.84rem;
 }
+.sales-details-toolbar {
+  align-items: center;
+}
+.sales-details-toolbar .product-search {
+  flex: 1 1 360px;
+  width: auto;
+  max-width: 430px;
+}
+.search-submit {
+  display: none;
+}
+.sales-date-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sales-date-filter label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.sales-date-filter input[type="date"] {
+  width: 140px;
+  padding: 9px 10px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.78rem;
+}
 .table-meta {
   color: var(--muted);
   font-size: 0.78rem;
@@ -1640,6 +1674,19 @@ a {
   height: 20px;
   accent-color: var(--leaf);
 }
+.setting-row input.setting-number {
+  width: 96px;
+  height: 42px;
+  padding: 8px 10px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  accent-color: auto;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: center;
+}
 .settings-form .btn {
   margin-top: 24px;
 }
@@ -1744,6 +1791,15 @@ a {
   }
   .product-search {
     width: 100%;
+  }
+  .sales-details-toolbar .product-search {
+    max-width: none;
+  }
+  .sales-date-filter {
+    flex-wrap: wrap;
+  }
+  .sales-date-filter input[type="date"] {
+    flex: 1 1 140px;
   }
   .product-list-options {
     justify-content: space-between;

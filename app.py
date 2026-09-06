@@ -6,7 +6,7 @@ import secrets
 import sqlite3
 import time
 from io import BytesIO
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 
 from flask import Flask, flash, g, redirect, render_template, request, send_file, session, url_for
@@ -116,6 +116,10 @@ def init_db():
                 setting_key TEXT PRIMARY KEY,
                 setting_value TEXT NOT NULL CHECK (setting_value IN ('0', '1'))
             );
+            CREATE TABLE IF NOT EXISTS sales_settings (
+                setting_key TEXT PRIMARY KEY,
+                setting_value INTEGER NOT NULL CHECK (setting_value > 0)
+            );
             CREATE TABLE IF NOT EXISTS company_preferences (
                 preference_key TEXT PRIMARY KEY,
                 company_id INTEGER NOT NULL,
@@ -184,6 +188,8 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_sales_customer ON sales(customer_name);
             INSERT OR IGNORE INTO app_settings (setting_key, setting_value)
                 VALUES ('show_sales_app', '1'), ('show_products', '1'), ('show_customers', '1');
+            INSERT OR IGNORE INTO sales_settings (setting_key, setting_value)
+                VALUES ('sales_details_default_months', 3);
             """
         )
         db.execute(
@@ -646,6 +652,22 @@ def get_app_settings():
     return settings
 
 
+def get_sales_details_default_months():
+    row = get_db().execute(
+        "SELECT setting_value FROM sales_settings WHERE setting_key = 'sales_details_default_months'"
+    ).fetchone()
+    return int(row["setting_value"]) if row else 3
+
+
+def subtract_months(value, months):
+    month = value.month - months
+    year = value.year + (month - 1) // 12
+    month = (month - 1) % 12 + 1
+    days_in_month = [31, 29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28,
+                     31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    return date(year, month, min(value.day, days_in_month[month - 1]))
+
+
 @app.context_processor
 def inject_app_settings():
     if session.get("user_id"):
@@ -1095,6 +1117,18 @@ def settings():
                     "ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value",
                     (key, value),
                 )
+            default_months_value = request.form.get("sales_details_default_months", "").strip()
+            try:
+                default_months = int(default_months_value)
+            except ValueError:
+                raise ValueError("Sales details date range must be a whole number of months.")
+            if default_months <= 0:
+                raise ValueError("Sales details date range must be greater than zero.")
+            write_db.execute(
+                "INSERT INTO sales_settings (setting_key, setting_value) VALUES (?, ?) "
+                "ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value",
+                ("sales_details_default_months", default_months),
+            )
             company_id = request.form.get("default_company_id", "").strip()
             selected_company = write_db.execute(
                 "SELECT id FROM companies WHERE id = ?", (company_id,)
@@ -1137,7 +1171,8 @@ def settings():
     default_company_id = preference["company_id"] if preference else (companies[0]["id"] if companies else None)
     selected_company = next((company for company in companies if company["id"] == default_company_id), None)
     return render_template("settings.html", settings=get_app_settings(), companies=companies,
-                           default_company_id=default_company_id, selected_company=selected_company)
+                           default_company_id=default_company_id, selected_company=selected_company,
+                           sales_details_default_months=get_sales_details_default_months())
 
 
 @app.route("/customers")
@@ -1429,16 +1464,35 @@ def new_sale():
 @login_required
 def sales_details():
     search = request.args.get("q", "").strip()
+    today = datetime.now().date()
+    default_months = get_sales_details_default_months()
+    start_date = request.args.get("start_date", "").strip() or subtract_months(today, default_months).isoformat()
+    end_date = request.args.get("end_date", "").strip() or today.isoformat()
+    try:
+        parsed_start = date.fromisoformat(start_date)
+        parsed_end = date.fromisoformat(end_date)
+    except ValueError:
+        parsed_start = subtract_months(today, default_months)
+        parsed_end = today
+        start_date = parsed_start.isoformat()
+        end_date = parsed_end.isoformat()
+    if parsed_start > parsed_end:
+        parsed_start, parsed_end = parsed_end, parsed_start
+        start_date = parsed_start.isoformat()
+        end_date = parsed_end.isoformat()
     like = f"%{search}%"
     rows = get_db().execute(
-        "SELECT sd.id, s.invoice_no, s.invoice_date, s.customer_name, "
-        "sd.product_name, sd.unit, sd.hsn_code, sd.quantity, sd.unit_price_cents, "
-        "sd.line_total_cents, s.id AS sale_id FROM sales_details sd JOIN sales s ON s.id = sd.sales_id "
-        "WHERE ? = '' OR CAST(s.invoice_no AS TEXT) LIKE ? OR s.customer_name LIKE ? "
-        "OR sd.product_name LIKE ? ORDER BY s.invoice_date DESC, sd.id DESC",
-        (search, like, like, like),
+        "SELECT s.id AS sale_id, s.invoice_no, s.invoice_date, s.customer_name, "
+        "TRIM(COALESCE(c.billing_address, '') || ' ' || COALESCE(c.city, '') || ' ' || "
+        "COALESCE(c.state, '') || ' ' || COALESCE(c.postal_code, '')) AS customer_address, "
+        "s.total_amount_cents FROM sales s LEFT JOIN customers c ON c.id = s.customer_id "
+        "WHERE s.invoice_date >= ? AND s.invoice_date <= ? AND "
+        "(? = '' OR CAST(s.invoice_no AS TEXT) LIKE ? OR s.customer_name LIKE ? "
+        "OR COALESCE(c.billing_address, '') LIKE ?) ORDER BY s.invoice_date DESC, s.id DESC",
+        (start_date, end_date, search, like, like, like),
     ).fetchall()
-    return render_template("sales_details.html", sales_details=rows, search=search)
+    return render_template("sales_details.html", sales_details=rows, search=search,
+                           start_date=start_date, end_date=end_date)
 
 
 def _bill_data(sale_id):

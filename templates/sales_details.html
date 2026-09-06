@@ -6,17 +6,26 @@
         <div>
             <p class="eyebrow">Transaction</p>
             <h1>Sales <em>details.</em></h1>
-            <p class="dashboard-copy">Review every product line recorded on your sales bills.</p>
+            <p class="dashboard-copy">Review each sales bill recorded for your business.</p>
         </div>
         <a class="back-link" href="{{ url_for('sales') }}">&#8592; Sales</a>
     </div>
-    <div class="product-list-toolbar">
+    <div class="product-list-toolbar sales-details-toolbar">
         <form class="product-search" method="get" action="{{ url_for('sales_details') }}">
             <span aria-hidden="true">&#8981;</span>
-            <input name="q" type="search" value="{{ search }}" placeholder="Search bill, customer or product..."
+            <input name="q" type="search" value="{{ search }}" placeholder="Search bill or customer..."
                 autocomplete="off">
+            <input name="start_date" type="hidden" value="{{ start_date }}">
+            <input name="end_date" type="hidden" value="{{ end_date }}">
+            <button class="search-submit" type="submit">Search</button>
         </form>
-        <span class="table-meta">{{ sales_details|length }} line items</span>
+        <form class="sales-date-filter" method="get" action="{{ url_for('sales_details') }}">
+            <input name="q" type="hidden" value="{{ search }}">
+            <label>From <input name="start_date" type="date" value="{{ start_date }}"></label>
+            <label>To <input name="end_date" type="date" value="{{ end_date }}"></label>
+            <button class="btn btn-primary" type="submit">Load</button>
+        </form>
+        <span class="table-meta">{{ sales_details|length }} bills</span>
     </div>
     <div class="table-scroll-wrap">
         <table class="product-table">
@@ -25,32 +34,24 @@
                     <th>Bill no.</th>
                     <th>Date</th>
                     <th>Customer</th>
-                    <th>Product</th>
-                    <th>Unit</th>
-                    <th>HSN / SKU</th>
-                    <th>Qty.</th>
-                    <th>Rate</th>
-                    <th>Amount</th>
+                    <th>Customer address</th>
+                    <th>Total amount</th>
                     <th>Bill</th>
                 </tr>
             </thead>
             <tbody>
                 {% for detail in sales_details %}
                 <tr>
-                    <td><a class="table-action" href="{{ url_for('sales') }}?q={{ detail.invoice_no }}">#{{
+                    <td><a class="table-action" href="{{ url_for('edit_sale', sale_id=detail.sale_id) }}">#{{
                             detail.invoice_no }}</a></td>
                     <td>{{ detail.invoice_date }}</td>
                     <td>{{ detail.customer_name }}</td>
-                    <td><strong>{{ detail.product_name }}</strong></td>
-                    <td>{{ detail.unit or '-' }}</td>
-                    <td>{{ detail.hsn_code or '-' }}</td>
-                    <td>{{ detail.quantity }}</td>
-                    <td>{{ '%.2f'|format(detail.unit_price_cents / 100) }}</td>
-                    <td>{{ '%.2f'|format(detail.line_total_cents / 100) }}</td>
+                    <td>{{ detail.customer_address or '-' }}</td>
+                    <td>{{ '%.2f'|format(detail.total_amount_cents / 100) }}</td>
                     <td><a class="table-action" href="{{ url_for('bill', sale_id=detail.sale_id) }}">Print</a></td>
                 </tr>
                 {% else %}<tr>
-                    <td class="empty-table" colspan="10">No sales details found.</td>
+                    <td class="empty-table" colspan="6">No sales details found.</td>
                 </tr>{% endfor %}
             </tbody>
         </table>
