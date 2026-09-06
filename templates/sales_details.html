@@ -31,6 +31,7 @@
                     <th>Qty.</th>
                     <th>Rate</th>
                     <th>Amount</th>
+                    <th>Bill</th>
                 </tr>
             </thead>
             <tbody>
@@ -46,9 +47,10 @@
                     <td>{{ detail.quantity }}</td>
                     <td>{{ '%.2f'|format(detail.unit_price_cents / 100) }}</td>
                     <td>{{ '%.2f'|format(detail.line_total_cents / 100) }}</td>
+                    <td><a class="table-action" href="{{ url_for('bill', sale_id=detail.sale_id) }}">Print</a></td>
                 </tr>
                 {% else %}<tr>
-                    <td class="empty-table" colspan="9">No sales details found.</td>
+                    <td class="empty-table" colspan="10">No sales details found.</td>
                 </tr>{% endfor %}
             </tbody>
         </table>

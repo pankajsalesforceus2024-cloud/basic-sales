@@ -10,6 +10,237 @@
   --yellow: #f3c967;
 }
 
+.company-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 20px 0;
+}
+.company-profile-grid label {
+  display: grid;
+  gap: 6px;
+  color: #657277;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.company-profile-grid input,
+.company-profile-grid textarea {
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid #e2e8eb;
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 400;
+}
+.company-profile-grid .wide-field {
+  grid-column: 1 / -1;
+}
+.bill-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+.bill-toolbar > div {
+  display: flex;
+  gap: 8px;
+}
+.invoice-paper {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 7mm 5mm;
+  color: #111;
+  background: #fff;
+  font-family: Arial, sans-serif;
+  font-size: 10pt;
+}
+.invoice-top {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: start;
+  line-height: 1.45;
+}
+.invoice-top > :nth-child(2) {
+  text-align: center;
+  font-size: 16px;
+}
+.invoice-top > :last-child {
+  text-align: right;
+}
+.invoice-copy {
+  text-align: center;
+  font-style: italic;
+  margin-top: -2px;
+}
+.invoice-company {
+  text-align: center;
+  margin: 24px 0 15px;
+}
+.invoice-company h1 {
+  margin: 0;
+  color: #a81818;
+  font-size: 24px;
+  text-decoration: underline;
+}
+.invoice-company p {
+  margin: 5px 0 0;
+  font-size: 15px;
+}
+.invoice-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1.5px solid #111;
+}
+.invoice-info > div {
+  min-height: 108px;
+}
+.invoice-info > div + div {
+  border-left: 1.5px solid #111;
+}
+.invoice-info p {
+  margin: 0;
+  padding: 7px 9px;
+  min-height: 27px;
+  border-bottom: 1px solid #111;
+}
+.invoice-info p:last-child {
+  border-bottom: 0;
+}
+.invoice-items {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.invoice-items th,
+.invoice-items td {
+  padding: 5px 4px;
+  border: 1.2px solid #111;
+  text-align: center;
+  vertical-align: top;
+}
+.invoice-items th {
+  background: #c7c7c7;
+}
+.invoice-items th:nth-child(2),
+.invoice-items td:nth-child(2) {
+  width: 38%;
+  text-align: left;
+}
+.invoice-items th:nth-child(1) {
+  width: 7%;
+}
+.invoice-items th:nth-child(3) {
+  width: 10%;
+}
+.invoice-items th:nth-child(4) {
+  width: 9%;
+}
+.invoice-items th:nth-child(5) {
+  width: 12%;
+}
+.invoice-items th:nth-child(6),
+.invoice-items th:nth-child(7) {
+  width: 12%;
+  text-align: right;
+}
+.invoice-items tbody tr {
+  height: 42px;
+}
+.invoice-bottom {
+  display: grid;
+  grid-template-columns: 1fr 170px;
+  border: 1.2px solid #111;
+  border-top: 0;
+}
+.invoice-notes {
+  min-height: 188px;
+}
+.invoice-notes > p,
+.invoice-notes .terms {
+  margin: 0;
+  padding: 7px;
+  border-bottom: 1px solid #111;
+}
+.notes-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 75px;
+  border-bottom: 1px solid #111;
+}
+.notes-split > div {
+  padding: 7px;
+}
+.notes-split > div + div {
+  border-left: 1px solid #111;
+}
+.notes-split p,
+.terms p {
+  white-space: pre-line;
+  margin: 6px 0 0;
+}
+.invoice-summary {
+  border-left: 1.2px solid #111;
+}
+.invoice-summary p {
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+  padding: 7px;
+  border-bottom: 1px solid #111;
+}
+.invoice-summary .net {
+  font-weight: 700;
+}
+.invoice-summary .signature {
+  min-height: 88px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 8px;
+  font-size: 9px;
+}
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  body,
+  .app-body {
+    background: #fff;
+  }
+  .app-sidebar,
+  .app-topbar,
+  .app-content > .flash-stack,
+  .bill-toolbar {
+    display: none !important;
+  }
+  .app-main {
+    margin: 0;
+  }
+  .app-content {
+    max-width: none;
+    padding: 0;
+  }
+  .invoice-paper {
+    margin: 0;
+    padding: 7mm 5mm;
+  }
+}
+@media (max-width: 800px) {
+  .company-profile-grid {
+    grid-template-columns: 1fr;
+  }
+  .company-profile-grid .wide-field {
+    grid-column: auto;
+  }
+  .invoice-paper {
+    transform-origin: top left;
+    transform: scale(0.72);
+    margin-bottom: -210px;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

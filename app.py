@@ -5,10 +5,15 @@ import re
 import secrets
 import sqlite3
 import time
+from io import BytesIO
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
-from flask import Flask, flash, g, redirect, render_template, request, session, url_for
+from flask import Flask, flash, g, redirect, render_template, request, send_file, session, url_for
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.pdfgen import canvas
 from werkzeug.security import check_password_hash, generate_password_hash
 
 
@@ -121,8 +126,14 @@ def init_db():
                 name TEXT NOT NULL,
                 address TEXT,
                 phone TEXT,
+                mobile TEXT,
                 email TEXT,
                 tax_id TEXT,
+                tin_number TEXT,
+                terms_conditions TEXT,
+                state_code TEXT,
+                pan_number TEXT,
+                declaration TEXT,
                 created_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS sales (
@@ -176,14 +187,37 @@ def init_db():
             """
         )
         db.execute(
-            "INSERT INTO companies (name, address, phone, email, created_at) "
-            "SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM companies)",
+            "INSERT INTO companies (name, address, phone, mobile, email, tax_id, terms_conditions, state_code, pan_number, declaration, created_at) "
+            "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM companies)",
             (
-                "Default Company",
-                "Add company address in the admin database",
-                "",
-                "",
+                "ASHMITA ASSOCIATES",
+                "72, Rajamal Ka Talab, Chandi Ki Taksal, Jaipur-2",
+                "0141-2633469",
+                "98290-53532",
+                "ashmita.associates5@rediffmail.com",
+                "08AABHJ7786H1ZT",
+                "1) If bill not paid within 15 days, the interest will be charged @18% per annum.\n2) All disputes are subject to Jaipur Jurisdiction only.\n3) Goods sold once shall not be returned.\n4) PAN No :- AABHJ7786H",
+                "08",
+                "AABHJ7786H",
+                "This is to certify that we have valid registration under GST and above information are true & correct.",
                 datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        db.execute(
+            "UPDATE companies SET name=?, address=?, phone=?, mobile=?, email=?, tax_id=?, "
+            "terms_conditions=?, state_code=?, pan_number=?, declaration=? "
+            "WHERE name = 'Default Company' AND address = 'Add company address in the admin database'",
+            (
+                "ASHMITA ASSOCIATES",
+                "72, Rajamal Ka Talab, Chandi Ki Taksal, Jaipur-2",
+                "0141-2633469",
+                "98290-53532",
+                "ashmita.associates5@rediffmail.com",
+                "08AABHJ7786H1ZT",
+                "1) If bill not paid within 15 days, the interest will be charged @18% per annum.\n2) All disputes are subject to Jaipur Jurisdiction only.\n3) Goods sold once shall not be returned.\n4) PAN No :- AABHJ7786H",
+                "08",
+                "AABHJ7786H",
+                "This is to certify that we have valid registration under GST and above information are true & correct.",
             ),
         )
         db.execute(
@@ -235,6 +269,20 @@ def init_db():
         for column, definition in customer_columns.items():
             if column not in existing_customer_columns:
                 db.execute(f"ALTER TABLE customers ADD COLUMN {column} {definition}")
+        existing_company_columns = {
+            row[1] for row in db.execute("PRAGMA table_info(companies)").fetchall()
+        }
+        company_columns = {
+            "mobile": "TEXT",
+            "tin_number": "TEXT",
+            "terms_conditions": "TEXT",
+            "state_code": "TEXT",
+            "pan_number": "TEXT",
+            "declaration": "TEXT",
+        }
+        for column, definition in company_columns.items():
+            if column not in existing_company_columns:
+                db.execute(f"ALTER TABLE companies ADD COLUMN {column} {definition}")
         customer_codes = set()
         for customer_id, customer_code in db.execute("SELECT id, customer_code FROM customers ORDER BY id"):
             normalized_code = (customer_code or "").strip()
@@ -1035,7 +1083,7 @@ def sales_app():
 @login_required
 def settings():
     setting_keys = ("show_sales_app", "show_products", "show_customers")
-    companies = get_db().execute("SELECT id, name FROM companies ORDER BY name").fetchall()
+    companies = get_db().execute("SELECT * FROM companies ORDER BY name").fetchall()
     if request.method == "POST":
         write_db = None
         try:
@@ -1053,6 +1101,17 @@ def settings():
             ).fetchone()
             if selected_company is None:
                 raise ValueError("Select a valid default company.")
+            write_db.execute(
+                "UPDATE companies SET name=?, address=?, phone=?, mobile=?, tax_id=? WHERE id=?",
+                (
+                    request.form.get("company_name", "").strip() or "Default Company",
+                    request.form.get("company_address", "").strip() or None,
+                    request.form.get("company_phone", "").strip() or None,
+                    request.form.get("company_mobile", "").strip() or None,
+                    request.form.get("company_tax_id", "").strip() or None,
+                    company_id,
+                ),
+            )
             write_db.execute(
                 "INSERT INTO company_preferences (preference_key, company_id) VALUES ('default', ?) "
                 "ON CONFLICT(preference_key) DO UPDATE SET company_id = excluded.company_id",
@@ -1076,7 +1135,9 @@ def settings():
         "SELECT company_id FROM company_preferences WHERE preference_key = 'default'"
     ).fetchone()
     default_company_id = preference["company_id"] if preference else (companies[0]["id"] if companies else None)
-    return render_template("settings.html", settings=get_app_settings(), companies=companies, default_company_id=default_company_id)
+    selected_company = next((company for company in companies if company["id"] == default_company_id), None)
+    return render_template("settings.html", settings=get_app_settings(), companies=companies,
+                           default_company_id=default_company_id, selected_company=selected_company)
 
 
 @app.route("/customers")
@@ -1372,12 +1433,195 @@ def sales_details():
     rows = get_db().execute(
         "SELECT sd.id, s.invoice_no, s.invoice_date, s.customer_name, "
         "sd.product_name, sd.unit, sd.hsn_code, sd.quantity, sd.unit_price_cents, "
-        "sd.line_total_cents FROM sales_details sd JOIN sales s ON s.id = sd.sales_id "
+        "sd.line_total_cents, s.id AS sale_id FROM sales_details sd JOIN sales s ON s.id = sd.sales_id "
         "WHERE ? = '' OR CAST(s.invoice_no AS TEXT) LIKE ? OR s.customer_name LIKE ? "
         "OR sd.product_name LIKE ? ORDER BY s.invoice_date DESC, sd.id DESC",
         (search, like, like, like),
     ).fetchall()
     return render_template("sales_details.html", sales_details=rows, search=search)
+
+
+def _bill_data(sale_id):
+    db = get_db()
+    sale = db.execute(
+        "SELECT s.*, c.name AS company_name, c.address AS company_address, c.phone AS company_phone, "
+        "c.mobile AS company_mobile, c.email AS company_email, c.tax_id AS company_tax_id, "
+        "c.tin_number, c.terms_conditions, c.state_code, c.pan_number, c.declaration, "
+        "cu.name AS party_name, cu.billing_address, cu.city, cu.state, cu.postal_code, cu.phone AS party_phone, "
+        "cu.email AS party_email, cu.tax_id AS party_tax_id FROM sales s "
+        "JOIN companies c ON c.id = s.company_id JOIN customers cu ON cu.id = s.customer_id WHERE s.id = ?",
+        (sale_id,),
+    ).fetchone()
+    if sale is None:
+        return None, []
+    details = db.execute("SELECT * FROM sales_details WHERE sales_id = ? ORDER BY id", (sale_id,)).fetchall()
+    return sale, details
+
+
+def _amount_in_words(cents):
+    ones = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"]
+    teens = ["Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"]
+    tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
+    def words(number):
+        if number < 10: return ones[number]
+        if number < 20: return teens[number - 10]
+        if number < 100: return tens[number // 10] + (" " + ones[number % 10] if number % 10 else "")
+        if number < 1000: return ones[number // 100] + " Hundred" + (" " + words(number % 100) if number % 100 else "")
+        if number < 100000: return words(number // 1000) + " Thousand" + (" " + words(number % 1000) if number % 1000 else "")
+        if number < 10000000: return words(number // 100000) + " Lakh" + (" " + words(number % 100000) if number % 100000 else "")
+        return words(number // 10000000) + " Crore" + (" " + words(number % 10000000) if number % 10000000 else "")
+    return f"{words(max(0, cents // 100))} Only"
+
+
+def _draw_bill_pdf(sale, details):
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    left, right, top = 18, width - 18, height - 18
+    ink = colors.HexColor("#111111")
+    grey = colors.HexColor("#c7c7c7")
+    pdf.setFillColor(ink)
+    pdf.setStrokeColor(ink)
+    pdf.setLineWidth(1.1)
+
+    def text(x, y, value, size=9, bold=False, align="left"):
+        font = "Helvetica-Bold" if bold else "Helvetica"
+        value = str(value or "")
+        if align == "right":
+            x -= stringWidth(value, font, size)
+        elif align == "center":
+            x -= stringWidth(value, font, size) / 2
+        pdf.setFont(font, size)
+        pdf.drawString(x, y, value)
+
+    def wrapped(x, y, value, max_width, size=9, leading=12, bold=False, max_lines=4):
+        font = "Helvetica-Bold" if bold else "Helvetica"
+        lines = []
+        for paragraph in str(value or "").splitlines() or [""]:
+            line = ""
+            for word in paragraph.split():
+                candidate = f"{line} {word}".strip()
+                if stringWidth(candidate, font, size) <= max_width:
+                    line = candidate
+                else:
+                    lines.append(line)
+                    line = word
+            lines.append(line)
+        for line in lines[:max_lines]:
+            text(x, y, line, size, bold)
+            y -= leading
+        return y
+
+    text(left + 10, top - 10, f"GST No:  {sale['company_tax_id'] or ''}", 10, True)
+    text(width / 2, top - 10, "GST INVOICE", 12, True, "center")
+    text(right - 10, top - 10, f"Phone :  {sale['company_phone'] or ''}", 10, True, "right")
+    text(right - 10, top - 25, f"Mobile :  {sale['company_mobile'] or ''}", 10, True, "right")
+    text(width / 2, top - 26, "Original / Duplicate / Triplicate", 10, False, "center")
+    text(width / 2, top - 70, f"M/s {sale['company_name']}", 18, True, "center")
+    text(width / 2, top - 88, "A Unit for the Manufacturing of Uniform Articles", 11, False, "center")
+    text(width / 2, top - 106, sale["company_address"] or "", 11, False, "center")
+    text(width / 2, top - 124, f"Email - {sale['company_email'] or ''}", 10, False, "center")
+
+    y = top - 138
+    info_h = 108
+    table_width = right - left
+    left_w = 275
+    pdf.rect(left, y - info_h, table_width, info_h)
+    pdf.line(left + left_w, y, left + left_w, y - info_h)
+    for row_y in (y - 28, y - 56, y - 84):
+        pdf.line(left + left_w, row_y, right, row_y)
+    text(left + 7, y - 18, "Party    :", 10, True)
+    text(left + 60, y - 18, sale["party_name"], 10, True)
+    text(left + left_w + 8, y - 18, "Invoice No  :", 10, True)
+    text(right - 8, y - 18, f"{sale['invoice_no']}    Date :  {sale['invoice_date']}", 10, True, "right")
+    text(left + 7, y - 46, "Address  :", 10, True)
+    wrapped(left + 60, y - 46, ", ".join(filter(None, [sale["billing_address"], sale["city"], sale["state"], sale["postal_code"]])), left_w - 68, 10, 12, False, 2)
+    text(left + left_w + 8, y - 46, "Order No   :", 10, True)
+    text(right - 8, y - 46, f"{sale['order_no'] or ''}    Date :  {sale['order_date'] or ''}", 10, True, "right")
+    text(left + 7, y - 82, f"GST No   :  {sale['party_tax_id'] or ''}", 10, True)
+    text(left + 180, y - 82, f"State Code:  {sale['state_code'] or ''}", 10, True)
+    text(left + left_w + 8, y - 74, f"Challan No :  {sale['challan_no'] or ''}", 10, True)
+    text(right - 8, y - 74, f"Date :  {sale['challan_date'] or ''}", 10, True, "right")
+    text(left + 7, y - 100, f"Email     :  {sale['party_email'] or ''}", 10, True)
+    text(left + left_w + 8, y - 102, f"Dispatched :  {sale['dispatched_by'] or ''}", 10, True)
+
+    table_top = y - info_h
+    header_h, row_h = 25, 360
+    columns = [38, 215, 55, 48, 65, 65, 73]
+    table_width = sum(columns)
+    pdf.rect(left, table_top - header_h - row_h, table_width, header_h + row_h)
+    pdf.setFillColor(grey)
+    pdf.rect(left, table_top - header_h, table_width, header_h, fill=1, stroke=0)
+    pdf.setFillColor(ink)
+    x = left
+    headers = ["S.No.", "Descriptions", "HSN", "Unit", "Quantity", "Rate", "Amount"]
+    for index, header in enumerate(headers):
+        if index:
+            pdf.line(x, table_top, x, table_top - header_h - row_h)
+        text(x + columns[index] / 2, table_top - 17, header, 8.5, True, "center")
+        x += columns[index]
+    line_y = table_top - header_h - 18
+    for index, detail in enumerate(details, 1):
+        text(left + 19, line_y, index, 9, False, "center")
+        wrapped(left + 43, line_y, detail["product_name"], columns[1] - 8, 9, 12, False, 4)
+        text(left + columns[0] + columns[1] + columns[2] / 2, line_y, detail["hsn_code"] or "", 8.5, False, "center")
+        text(left + sum(columns[:3]) + columns[3] / 2, line_y, detail["unit"] or "", 8.5, False, "center")
+        text(left + sum(columns[:4]) + columns[4] - 5, line_y, detail["quantity"], 8.5, False, "right")
+        text(left + sum(columns[:5]) + columns[5] - 5, line_y, f"{detail['unit_price_cents'] / 100:.2f}", 8.5, False, "right")
+        text(right - 5, line_y, f"{detail['line_total_cents'] / 100:.2f}", 8.5, False, "right")
+        line_y -= 42
+
+    bottom = table_top - header_h - row_h
+    footer_h = 188
+    pdf.rect(left, bottom - footer_h, table_width, footer_h)
+    summary_x = right - 170
+    pdf.line(summary_x, bottom, summary_x, bottom - footer_h)
+    for offset in (25, 50, 75, 100, 125, 150):
+        pdf.line(summary_x, bottom - offset, right, bottom - offset)
+    text(left + 7, bottom - 18, f"In Words :  {_amount_in_words(sale['total_amount_cents'])}", 9, True)
+    text(summary_x + 7, bottom - 18, "Gross Total", 9, True)
+    text(right - 7, bottom - 18, f"{sale['gross_total_cents']/100:.2f}", 9, False, "right")
+    for label, rate, amount, offset in (("CGST", sale["cgst_rate"], sale["cgst_cents"], 43), ("SGST", sale["sgst_rate"], sale["sgst_cents"], 68), ("IGST", sale["igst_rate"], sale["igst_cents"], 93)):
+        text(summary_x + 7, bottom - offset, f"{label} @   {rate:g}%", 9, True)
+        text(right - 7, bottom - offset, f"{amount/100:.2f}", 9, False, "right")
+    text(summary_x + 7, bottom - 118, "Round Off", 9, True)
+    text(right - 7, bottom - 118, f"{sale['round_off_cents']/100:.2f}", 9, False, "right")
+    text(summary_x + 7, bottom - 143, "Net Amount", 9, True)
+    text(right - 7, bottom - 143, f"{sale['total_amount_cents']/100:.2f}", 9, True, "right")
+    text(left + 7, bottom - 46, "Remarks :", 9, True)
+    text(left + 195, bottom - 46, "Bank Details :", 9, True)
+    pdf.line(left + 190, bottom - 25, left + 190, bottom - 100)
+    pdf.line(left, bottom - 100, summary_x, bottom - 100)
+    wrapped(left + 7, bottom - 60, sale["remarks"] or "", 175, 8.5, 11, False, 3)
+    wrapped(left + 195, bottom - 60, sale["bank_detail"] or "", summary_x - left - 202, 8.5, 11, False, 3)
+    wrapped(left + 7, bottom - 118, "Terms & Conditions :\n" + (sale["terms_conditions"] or ""), summary_x - left - 14, 8.5, 12, True, 5)
+    text(left + 7, bottom - footer_h + 12, "DECLARATION :", 9, True)
+    wrapped(left + 90, bottom - footer_h + 12, sale["declaration"] or "This is to certify that we have valid registration under GST and above information are true & correct.", summary_x - left - 100, 8.5, 10, False, 2)
+    pdf.save()
+    buffer.seek(0)
+    return buffer
+
+
+@app.route("/sales/<int:sale_id>/bill")
+@login_required
+def bill(sale_id):
+    sale, details = _bill_data(sale_id)
+    if sale is None:
+        flash("Sales bill not found.", "danger")
+        return redirect(url_for("sales"))
+    return render_template("bill.html", sale=sale, details=details,
+                           amount_in_words=_amount_in_words(sale["total_amount_cents"]))
+
+
+@app.route("/sales/<int:sale_id>/bill.pdf")
+@login_required
+def bill_pdf(sale_id):
+    sale, details = _bill_data(sale_id)
+    if sale is None:
+        flash("Sales bill not found.", "danger")
+        return redirect(url_for("sales"))
+    return send_file(_draw_bill_pdf(sale, details), mimetype="application/pdf", as_attachment=True,
+                     download_name=f"invoice-{sale['invoice_no']}.pdf")
 
 
 @app.route("/sales/<int:sale_id>/edit", methods=("GET", "POST"))

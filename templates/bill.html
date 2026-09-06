@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Invoice #{{ sale.invoice_no }} | Sales{% endblock %}
+{% block content %}
+<div class="bill-toolbar">
+    <a class="back-link" href="{{ url_for('edit_sale', sale_id=sale.id) }}">&#8592; Edit bill</a>
+    <div><a class="btn btn-secondary" href="{{ url_for('bill_pdf', sale_id=sale.id) }}">Download PDF</a><button
+            class="btn btn-primary" type="button" onclick="window.print()">Print bill</button></div>
+</div>
+<main class="invoice-paper">
+    <div class="invoice-top"><strong>GST No: {{ sale.company_tax_id or '' }}</strong><strong>GST
+            INVOICE</strong><span>Phone : {{ sale.company_phone or '' }}<br>Mobile : {{ sale.company_mobile or ''
+            }}</span></div>
+    <div class="invoice-copy">Original / Duplicate / Triplicate</div>
+    <header class="invoice-company">
+        <h1>M/s {{ sale.company_name }}</h1>
+        <p>A Unit for the Manufacturing of Uniform Articles</p>
+        <p>{{ sale.company_address or '' }}</p>
+        <p>Email - {{ sale.company_email or '' }}</p>
+    </header>
+    <section class="invoice-info">
+        <div>
+            <p><b>Party :</b> {{ sale.party_name }}</p>
+            <p><b>Address :</b> {{ sale.billing_address or '' }} {{ sale.city or '' }} {{ sale.state or '' }}</p>
+            <p><b>GST No :</b> {{ sale.party_tax_id or '' }} <b>State Code:</b> {{ sale.state_code or '' }}</p>
+            <p><b>Email :</b> {{ sale.party_email or '' }}</p>
+        </div>
+        <div>
+            <p><b>Invoice No :</b> {{ sale.invoice_no }} <b>Date :</b> {{ sale.invoice_date }}</p>
+            <p><b>Order No :</b> {{ sale.order_no or '' }} <b>Date :</b> {{ sale.order_date or '' }}</p>
+            <p><b>Challan No :</b> {{ sale.challan_no or '' }} <b>Date :</b> {{ sale.challan_date or '' }}</p>
+            <p><b>Dispatched :</b> {{ sale.dispatched_by or '' }}</p>
+        </div>
+    </section>
+    <table class="invoice-items">
+        <thead>
+            <tr>
+                <th>S.No.</th>
+                <th>Descriptions</th>
+                <th>HSN</th>
+                <th>Unit</th>
+                <th>Quantity</th>
+                <th>Rate</th>
+                <th>Amount</th>
+            </tr>
+        </thead>
+        <tbody>{% for detail in details %}<tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ detail.product_name }}</td>
+                <td>{{ detail.hsn_code or '' }}</td>
+                <td>{{ detail.unit or '' }}</td>
+                <td>{{ detail.quantity }}</td>
+                <td>{{ '%.2f'|format(detail.unit_price_cents / 100) }}</td>
+                <td>{{ '%.2f'|format(detail.line_total_cents / 100) }}</td>
+            </tr>{% endfor %}{% for _ in range([0, 8 - details|length]|max) %}<tr>
+                <td>&nbsp;</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>{% endfor %}</tbody>
+    </table>
+    <section class="invoice-bottom">
+        <div class="invoice-notes">
+            <p><b>In Words :</b> {{ amount_in_words }}</p>
+            <div class="notes-split">
+                <div><b>Remarks :</b>
+                    <p>{{ sale.remarks or '' }}</p>
+                </div>
+                <div><b>Bank Details :</b>
+                    <p>{{ sale.bank_detail or '' }}</p>
+                </div>
+            </div>
+            <div class="terms"><b>Terms &amp; Conditions :</b>
+                <p>{{ sale.terms_conditions or '' }}</p>
+            </div>
+            <p><b>DECLARATION :</b> {{ sale.declaration or 'This is to certify that we have valid registration under GST
+                and above information are true & correct.' }}</p>
+        </div>
+        <div class="invoice-summary">
+            <p><b>Gross Total</b><span>{{ '%.2f'|format(sale.gross_total_cents / 100) }}</span></p>
+            <p><b>CGST @ {{ '%.2f'|format(sale.cgst_rate) }}%</b><span>{{ '%.2f'|format(sale.cgst_cents / 100) }}</span>
+            </p>
+            <p><b>SGST @ {{ '%.2f'|format(sale.sgst_rate) }}%</b><span>{{ '%.2f'|format(sale.sgst_cents / 100) }}</span>
+            </p>
+            <p><b>IGST @ {{ '%.2f'|format(sale.igst_rate) }}%</b><span>{{ '%.2f'|format(sale.igst_cents / 100) }}</span>
+            </p>
+            <p><b>Round Off</b><span>{{ '%.2f'|format(sale.round_off_cents / 100) }}</span></p>
+            <p class="net"><b>Net Amount</b><span>{{ '%.2f'|format(sale.total_amount_cents / 100) }}</span></p>
+            <div class="signature">Authorised Signatory</div>
+        </div>
+    </section>
+</main>
+{% endblock %}

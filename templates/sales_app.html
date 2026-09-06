@@ -119,7 +119,10 @@
             <div class="sales-actions"><button class="btn btn-primary" type="submit">Save bill</button>{% if
                 current_sale %}<button class="btn btn-danger" type="submit"
                     formaction="{{ url_for('delete_sale', sale_id=current_sale.id) }}" formmethod="post"
-                    onclick="return confirm('Delete this bill?');">Delete</button>{% endif %}</div>
+                    onclick="return confirm('Delete this bill?');">Delete</button><a class="btn btn-secondary"
+                    href="{{ url_for('bill', sale_id=current_sale.id) }}">View / print bill</a><a
+                    class="btn btn-secondary" href="{{ url_for('bill_pdf', sale_id=current_sale.id) }}">PDF</a>{% endif
+                %}</div>
         </form>
     </div>
 </section>
