@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit company' if editing_company else 'Add company' }} | Sales{% endblock %}
+{% block content %}
+<section class="workspace-panel">
+    <div class="workspace-heading">
+        <div>
+            <p class="eyebrow">Company master</p>
+            <h1>{{ 'Edit the' if editing_company else 'Add a' }} <em>company.</em></h1>
+            <p class="dashboard-copy">Keep invoice header and GST registration details ready for billing.</p>
+        </div>
+        <a class="back-link" href="{{ url_for('companies') }}">&#8592; Companies</a>
+    </div>
+    <form class="workspace-form" method="post">
+        <div class="form-grid product-form-grid">
+            {% for name, label, type, required in [
+            ('name', 'Company name', 'text', true), ('address', 'Address', 'text', false),
+            ('phone', 'Phone', 'tel', false), ('mobile', 'Mobile', 'tel', false),
+            ('email', 'Email', 'email', false), ('tax_id', 'GST No.', 'text', false),
+            ('state', 'State', 'text', true), ('state_code', 'State code', 'text', false),
+            ('pan_number', 'PAN number', 'text', false)
+            ] %}<div class="field-group {% if field_errors %}has-error{% endif %}">
+                <label for="{{ name }}">{{ label }}</label>
+                <input id="{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ form_data.get(name, '')|e }}" {% if
+                    required %}required{% endif %}>
+            </div>{% endfor %}
+            <div class="field-group full-width-field"><label for="terms_conditions">Terms and
+                    conditions</label><textarea id="terms_conditions" name="terms_conditions"
+                    rows="4">{{ form_data.get('terms_conditions', '')|e }}</textarea></div>
+            <div class="field-group full-width-field"><label for="declaration">Declaration</label><textarea
+                    id="declaration" name="declaration" rows="3">{{ form_data.get('declaration', '')|e }}</textarea>
+            </div>
+        </div>
+        {% for error in field_errors %}<div class="field-error" role="alert">{{ error }}</div>{% endfor %}
+        <button class="btn btn-primary" type="submit">{{ 'Save changes' if editing_company else 'Add company' }} <span
+                aria-hidden="true">&#8594;</span></button>
+    </form>
+</section>
+{% endblock %}

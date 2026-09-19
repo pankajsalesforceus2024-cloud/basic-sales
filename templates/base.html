@@ -17,11 +17,19 @@
 <body class="{% if session.get('user_id') %}app-body{% endif %}">
     {% if session.get('user_id') %}
     <aside class="app-sidebar">
-        <a class="brand" href="{{ url_for('dashboard') }}"><span class="brand-mark">S</span><span>Sales</span></a>
+        <div class="sidebar-brand-row">
+            <a class="brand" href="{{ url_for('dashboard') }}"><span class="brand-mark">S</span><span>Sales</span></a>
+            <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-label="Collapse sidebar"
+                aria-expanded="true">&#8249;</button>
+        </div>
         <p class="sidebar-label">Workspace</p>
         <nav class="sidebar-menu" aria-label="Main navigation">
             <a class="sidebar-link {% if request.endpoint == 'dashboard' %}active{% endif %}"
-                href="{{ url_for('dashboard') }}"><span class="nav-icon">&#9632;</span>Dashboard</a>
+                href="{{ url_for('dashboard') }}"><span class="nav-icon">&#9632;</span><span
+                    class="nav-label">Dashboard</span></a>
+            <a class="sidebar-link {% if request.endpoint in ('companies', 'add_company', 'edit_company') %}active{% endif %}"
+                href="{{ url_for('companies') }}"><span class="nav-icon">&#9633;</span><span
+                    class="nav-label">Company</span></a>
             {% if app_settings.get('show_products', True) or app_settings.get('show_customers', True) %}
             <details class="sidebar-group" {% if request.endpoint in ('products', 'add_product' , 'edit_product'
                 , 'customers' , 'add_customer' , 'edit_customer' ) %}open{% endif %}>
@@ -33,10 +41,12 @@
                 <div class="sidebar-submenu">
                     {% if app_settings.get('show_products', True) %}<a
                         class="sidebar-link sidebar-sublink {% if request.endpoint in ('products', 'add_product', 'edit_product') %}active{% endif %}"
-                        href="{{ url_for('products') }}"><span class="sub-dot"></span>Product</a>{% endif %}
+                        href="{{ url_for('products') }}"><span class="sub-dot"></span><span
+                            class="nav-label">Product</span></a>{% endif %}
                     {% if app_settings.get('show_customers', True) %}<a
                         class="sidebar-link sidebar-sublink {% if request.endpoint in ('customers', 'add_customer', 'edit_customer') %}active{% endif %}"
-                        href="{{ url_for('customers') }}"><span class="sub-dot"></span>Customer</a>{% endif %}
+                        href="{{ url_for('customers') }}"><span class="sub-dot"></span><span
+                            class="nav-label">Customer</span></a>{% endif %}
                 </div>
             </details>
             {% endif %}
@@ -50,24 +60,30 @@
                 </summary>
                 <div class="sidebar-submenu">
                     <a class="sidebar-link sidebar-sublink {% if request.endpoint in ('sales', 'new_sale', 'edit_sale') %}active{% endif %}"
-                        href="{{ url_for('sales') }}"><span class="sub-dot"></span>Sales</a>
+                        href="{{ url_for('sales') }}"><span class="sub-dot"></span><span
+                            class="nav-label">Sales</span></a>
                     <a class="sidebar-link sidebar-sublink {% if request.endpoint == 'sales_details' %}active{% endif %}"
-                        href="{{ url_for('sales_details') }}"><span class="sub-dot"></span>Sales Details</a>
+                        href="{{ url_for('sales_details') }}"><span class="sub-dot"></span><span class="nav-label">Sales
+                            Details</span></a>
                 </div>
             </details>
             {% endif %}
         </nav>
         <div class="sidebar-bottom">
             <a class="sidebar-link {% if request.endpoint == 'settings' %}active{% endif %}"
-                href="{{ url_for('settings') }}"><span class="nav-icon">&#9881;</span>Settings</a>
+                href="{{ url_for('settings') }}"><span class="nav-icon">&#9881;</span><span
+                    class="nav-label">Settings</span></a>
             <a class="sidebar-link sidebar-logout" href="{{ url_for('logout') }}"><span
-                    class="nav-icon">&#8592;</span>Log out</a>
+                    class="nav-icon">&#8592;</span><span class="nav-label">Log out</span></a>
         </div>
     </aside>
     <div class="app-main">
         <header class="app-topbar">
-            <div class="topbar-search"><span>&#8981;</span><input type="search"
-                    placeholder="Search or type a command..." aria-label="Search"></div>
+            <form class="topbar-search" method="get" action="{{ url_for('sales') }}" role="search">
+                <span aria-hidden="true">&#8981;</span><input type="search" name="q"
+                    value="{{ request.args.get('q', '') }}" placeholder="Search bills by number, date or customer..."
+                    aria-label="Search bills">
+            </form>
             <div class="topbar-user"><span class="online-dot"></span><span>{{ session.get('username') }}</span><span
                     class="user-avatar">{{ session.get('username', 'U')[0]|upper }}</span></div>
         </header>
@@ -77,6 +93,23 @@
                     Sales</a></div>
         </nav>
         {% endif %}
+        <div class="bill-search-modal" id="global-bill-search-modal" hidden>
+            <div class="bill-search-backdrop" data-close-global-search></div>
+            <section class="bill-search-dialog" role="dialog" aria-modal="true"
+                aria-labelledby="global-bill-search-title">
+                <div class="modal-heading">
+                    <div>
+                        <p class="eyebrow">Sales records</p>
+                        <h2 id="global-bill-search-title">Search bills</h2>
+                    </div>
+                    <button class="modal-close" type="button" aria-label="Close"
+                        data-close-global-search>&times;</button>
+                </div>
+                <div class="bill-list" id="global-bill-search-results" aria-live="polite">
+                    <p class="empty-note">Enter a bill number, date or customer.</p>
+                </div>
+            </section>
+        </div>
         <main class="page-shell {% if session.get('user_id') %}app-content{% endif %}">
             {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
@@ -98,6 +131,70 @@
         {% if session.get('user_id') %}
     </div>{% endif %}
     <footer class="site-footer">Sales <span>·</span> a clear view of what moves business forward</footer>
+    {% if session.get('user_id') %}
+    <script>
+        const sidebarToggle = document.querySelector('#sidebar-toggle');
+        const sidebarStorageKey = 'sales-sidebar-collapsed';
+        function setSidebarCollapsed(collapsed) {
+            document.body.classList.toggle('sidebar-collapsed', collapsed);
+            sidebarToggle?.setAttribute('aria-expanded', String(!collapsed));
+            sidebarToggle?.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+        }
+        setSidebarCollapsed(localStorage.getItem(sidebarStorageKey) === 'true');
+        sidebarToggle?.addEventListener('click', () => {
+            const collapsed = !document.body.classList.contains('sidebar-collapsed');
+            setSidebarCollapsed(collapsed);
+            localStorage.setItem(sidebarStorageKey, String(collapsed));
+        });
+        const globalSearchForm = document.querySelector('.topbar-search');
+        const globalSearchInput = globalSearchForm?.querySelector('input[name="q"]');
+        const globalSearchModal = document.querySelector('#global-bill-search-modal');
+        const globalSearchResults = document.querySelector('#global-bill-search-results');
+        let globalSearchRequest;
+        function closeGlobalSearch() {
+            globalSearchModal.hidden = true;
+        }
+        async function searchBills(query) {
+            const trimmedQuery = query.trim();
+            if (!trimmedQuery) {
+                globalSearchResults.innerHTML = '<p class="empty-note">Enter a bill number, date or customer.</p>';
+                globalSearchModal.hidden = false;
+                return;
+            }
+            if (globalSearchRequest) globalSearchRequest.abort();
+            globalSearchRequest = new AbortController();
+            globalSearchResults.innerHTML = '<p class="empty-note">Searching...</p>';
+            globalSearchModal.hidden = false;
+            try {
+                const response = await fetch(`${globalSearchForm.action}?q=${encodeURIComponent(trimmedQuery)}`, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    signal: globalSearchRequest.signal
+                });
+                if (!response.ok) throw new Error('Search failed');
+                const html = await response.text();
+                const parsed = new DOMParser().parseFromString(html, 'text/html');
+                const results = parsed.querySelector('.bill-search-results .bill-list');
+                globalSearchResults.innerHTML = results ? results.innerHTML : '<p class="empty-note">No bills found.</p>';
+            } catch (error) {
+                if (error.name !== 'AbortError') globalSearchResults.innerHTML = '<p class="empty-note">Unable to search bills.</p>';
+            }
+        }
+        globalSearchForm?.addEventListener('submit', event => {
+            event.preventDefault();
+            searchBills(globalSearchInput.value);
+        });
+        globalSearchInput?.addEventListener('input', event => {
+            if (event.target.value.trim()) searchBills(event.target.value);
+            else closeGlobalSearch();
+        });
+        globalSearchModal?.querySelectorAll('[data-close-global-search]').forEach(element => {
+            element.addEventListener('click', closeGlobalSearch);
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && globalSearchModal && !globalSearchModal.hidden) closeGlobalSearch();
+        });
+    </script>
+    {% endif %}
 </body>
 
 </html>

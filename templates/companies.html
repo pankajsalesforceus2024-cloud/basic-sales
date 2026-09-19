@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Companies | Sales{% endblock %}
+{% block content %}
+<section class="workspace-panel product-management-panel">
+    <div class="workspace-heading">
+        <div>
+            <p class="eyebrow">Company master</p>
+            <h1>Manage <em>companies.</em></h1>
+            <p class="dashboard-copy">Maintain the companies available for invoices and GST calculations.</p>
+        </div>
+        <a class="btn btn-primary" href="{{ url_for('add_company') }}">+ Add company</a>
+    </div>
+    <div class="table-scroll-wrap">
+        <table class="product-table">
+            <thead>
+                <tr>
+                    <th>Company</th>
+                    <th>State</th>
+                    <th>GST No.</th>
+                    <th>Phone</th>
+                    <th>Status</th>
+                    <th><span class="visually-hidden">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for company in companies %}<tr>
+                    <td><strong>{{ company.name }}</strong><br><small>{{ company.address or '-' }}</small></td>
+                    <td>{{ company.state or '-' }}</td>
+                    <td>{{ company.tax_id or '-' }}</td>
+                    <td>{{ company.phone or company.mobile or '-' }}</td>
+                    <td>{% if company.is_default %}<span class="status-pill status-active">Default</span>{% else %}<span
+                            class="status-pill">Available</span>{% endif %}</td>
+                    <td class="table-actions"><a class="table-action"
+                            href="{{ url_for('edit_company', company_id=company.id) }}">Edit</a></td>
+                </tr>{% else %}<tr>
+                    <td class="empty-table" colspan="6">No companies found.</td>
+                </tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

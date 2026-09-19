@@ -53,6 +53,10 @@
                     <option value="inactive" {% if form_data.get('status')=='inactive' %}selected{% endif %}>Inactive
                     </option>
                 </select></div>
+            <label class="setting-row full-width-field" for="shared_across_companies"><span><strong>Share across
+                        companies</strong><small>Allow this customer to appear for every company.</small></span><input
+                    id="shared_across_companies" name="shared_across_companies" type="checkbox" {% if
+                    form_data.get('shared_across_companies') in (1, '1' , 'on' , True) %}checked{% endif %}></label>
         </div>
         <button class="btn btn-primary" type="submit">{{ 'Save changes' if editing_customer else 'Add customer' }} <span
                 aria-hidden="true">&#8594;</span></button>

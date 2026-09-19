@@ -8,19 +8,38 @@
             <h1>Create an <em>invoice.</em></h1>
             <p class="dashboard-copy">Choose a company, add a party and build the bill in one place.</p>
         </div>
-        <div class="sales-heading-actions"><button class="btn btn-secondary" id="open-bill-search" type="button">Find
-                bills</button><a class="back-link" href="{{ url_for('dashboard') }}">&#8592; Dashboard</a></div>
+        <div class="sales-heading-actions">
+            <section class="recent-bills" aria-label="Recently modified bills">
+                <div class="recent-bills-heading"><span>Recent bills</span><small>Last 5 created or updated</small>
+                </div>
+                <div class="recent-bills-list">{% for bill in recent_bills %}<a
+                        href="{{ url_for('edit_sale', sale_id=bill.id) }}"
+                        title="Open invoice {{ bill.invoice_no }}"><strong>#{{ bill.invoice_no }}</strong><span>{{
+                            bill.customer_name }}</span><small>{{ bill.created_at[:16]|replace('T', ' ')
+                            }}</small></a>{% else %}<span class="empty-note">No bills yet.</span>{% endfor %}</div>
+            </section>
+        </div>
     </div>
+    {% if search %}<section class="form-section bill-search-results" aria-label="Bill search results">
+        <div class="section-title">
+            <h2>Bill search results</h2><span>{{ sales_rows|length }} found</span>
+        </div>
+        <div class="bill-list">{% for bill in sales_rows %}<a class="bill-list-item"
+                href="{{ url_for('edit_sale', sale_id=bill.id) }}"><strong>#{{ bill.invoice_no }}</strong><span>{{
+                    bill.customer_name }}</span><small>{{ bill.invoice_date }} &middot; {{
+                    '%.2f'|format(bill.total_amount_cents / 100) }}</small></a>{% else %}<p class="empty-note">No bills
+                found.</p>{% endfor %}</div>
+    </section>{% endif %}
     <div class="sales-layout">
         <form class="sales-form" method="post"
             action="{% if current_sale %}{{ url_for('edit_sale', sale_id=current_sale.id) }}{% else %}{{ url_for('sales') }}{% endif %}">
-            <div class="form-section company-strip"><span class="company-label">Creating bill under</span><strong
+            <div class="form-section company-strip"><span class="company-label">Company</span><strong
                     class="company-name">{% if current_sale %}{% for company in companies %}{% if company.id ==
                     current_sale.company_id %}{{ company.name }}{% endif %}{% endfor %}{% else %}{{
                     selected_company.name if selected_company else 'No default company selected' }}{% endif
                     %}</strong><input type="hidden" name="company_id" id="company-id"
                     value="{% if current_sale %}{{ current_sale.company_id }}{% else %}{{ selected_company_id or '' }}{% endif %}"><a
-                    class="company-settings-link" href="{{ url_for('settings') }}">Change in Settings</a></div>
+                    class="company-settings-link" href="{{ url_for('settings') }}">Edit company</a></div>
             <div class="form-section invoice-meta">
                 <div><label for="invoice-no">Invoice no.</label><input id="invoice-no" name="invoice_no" type="number"
                         min="1" value="{{ current_sale.invoice_no if current_sale else next_invoice }}" required></div>
@@ -66,6 +85,8 @@
                                 <th>Qty.</th>
                                 <th>Rate</th>
                                 <th>Amount</th>
+                                <th>GST rate</th>
+                                <th>GST amount</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -82,12 +103,19 @@
                                 <td><input name="rate" class="rate" type="number" min="0" step="0.01"
                                         value="{{ '%.2f'|format(detail.unit_price_cents / 100) }}" required></td>
                                 <td class="line-total">{{ '%.2f'|format(detail.line_total_cents / 100) }}</td>
+                                <td class="line-gst-rate">{{ '%.2f'|format(detail.gst_rate or 0) }}%</td>
+                                <td class="line-gst">{{ '%.2f'|format(detail.gst_cents / 100) }}</td>
                                 <td><button class="remove-line" title="Remove item" type="button">&times;</button></td>
                             </tr>{% endfor %}</tbody>
                     </table>
                 </div>
                 <datalist id="product-options">{% for product in products %}<option value="{{ product.name }}"></option>
                     {% endfor %}</datalist>
+            </div>
+            <div class="item-add-bottom">
+                <button class="btn btn-secondary btn-compact-add" id="add-line-bottom" type="button"
+                    title="Add item (Alt+N)">+ Add item</button>
+                <span>Press Alt+N to add an item</span>
             </div>
             <div class="form-section notes-grid">
                 <div><label for="bank-detail">Bank detail</label><textarea id="bank-detail" name="bank_detail"
@@ -98,13 +126,8 @@
             <div class="form-section totals-section">
                 <div class="tax-inputs"><label>Other charges <input name="other_charges" id="other-charges"
                             type="number" min="0" step="0.01"
-                            value="{{ '%.2f'|format(current_sale.other_charges_cents / 100) if current_sale else '0.00' }}"></label><label>CGST
-                        % <input name="cgst_rate" type="number" min="0" step="0.01"
-                            value="{{ current_sale.cgst_rate if current_sale else '0' }}"></label><label>SGST % <input
-                            name="sgst_rate" type="number" min="0" step="0.01"
-                            value="{{ current_sale.sgst_rate if current_sale else '0' }}"></label><label>IGST % <input
-                            name="igst_rate" type="number" min="0" step="0.01"
-                            value="{{ current_sale.igst_rate if current_sale else '0' }}"></label></div>
+                            value="{{ '%.2f'|format(current_sale.other_charges_cents / 100) if current_sale else '0.00' }}"></label>
+                </div>
                 <dl class="bill-totals">
                     <dt>Gross total</dt>
                     <dd id="gross-total">0.00</dd>
@@ -112,12 +135,19 @@
                     <dd id="taxable-total">0.00</dd>
                     <dt>Total tax</dt>
                     <dd id="total-tax">0.00</dd>
+                    <dt>CGST</dt>
+                    <dd id="cgst-total">0.00</dd>
+                    <dt>SGST</dt>
+                    <dd id="sgst-total">0.00</dd>
+                    <dt>IGST</dt>
+                    <dd id="igst-total">0.00</dd>
                     <dt class="grand-total">Net total</dt>
                     <dd id="net-total" class="grand-total">0.00</dd>
                 </dl>
             </div>
-            <div class="sales-actions"><button class="btn btn-primary" type="submit">Save bill</button>{% if
-                current_sale %}<button class="btn btn-danger" type="submit"
+            <div class="sales-actions"><button class="btn btn-primary" type="submit">{{ 'Update' if
+                    current_sale else 'Save' }}</button><button class="btn btn-secondary" id="clear-sale"
+                    type="button">Clear</button>{% if current_sale %}<button class="btn btn-danger" type="submit"
                     formaction="{{ url_for('delete_sale', sale_id=current_sale.id) }}" formmethod="post"
                     onclick="return confirm('Delete this bill?');">Delete</button><a class="btn btn-secondary"
                     href="{{ url_for('bill', sale_id=current_sale.id) }}">View / print bill</a><a
@@ -126,39 +156,35 @@
         </form>
     </div>
 </section>
-<div class="bill-search-modal" id="bill-search-modal" hidden>
-    <div class="bill-search-backdrop" data-close-bill-search></div>
-    <section class="bill-search-dialog" role="dialog" aria-modal="true" aria-labelledby="bill-search-title">
+<div class="bill-search-modal" id="clear-sale-modal" hidden>
+    <div class="bill-search-backdrop" data-close-clear-sale></div>
+    <section class="bill-search-dialog clear-sale-dialog" role="dialog" aria-modal="true"
+        aria-labelledby="clear-sale-title">
         <div class="modal-heading">
             <div>
-                <p class="eyebrow">Sales records</p>
-                <h2 id="bill-search-title">Find bills</h2>
-            </div><button class="modal-close" type="button" aria-label="Close" data-close-bill-search>&times;</button>
+                <p class="eyebrow">Start fresh</p>
+                <h2 id="clear-sale-title">Clear this bill?</h2>
+            </div>
+            <button class="modal-close" type="button" aria-label="Close" data-close-clear-sale>&times;</button>
         </div>
-        <form class="sales-search" id="bill-search-form" method="get" action="{{ url_for('sales') }}"><label
-                for="bill-search">Bill number,
-                date or customer</label>
-            <div><input id="bill-search" name="q" value="{{ search }}" placeholder="Start typing to search..."><button
-                    class="icon-button" title="Search" type="submit">&#8981;</button></div>
-        </form>
-        <div class="bill-list" id="bill-search-results" aria-live="polite">{% for bill in sales_rows %}<a
-                class="bill-list-item {% if current_sale and current_sale.id == bill.id %}active{% endif %}"
-                href="{{ url_for('edit_sale', sale_id=bill.id) }}"><strong>#{{ bill.invoice_no }}</strong><span>{{
-                    bill.customer_name }}</span><small>{{ bill.invoice_date }} &middot; {{
-                    '%.2f'|format(bill.total_amount_cents / 100) }}</small></a>{% else %}<p class="empty-note">No bills
-                found.</p>{% endfor %}</div>
+        <p class="clear-sale-copy">Your current bill details will be removed from this form. This will not delete a
+            saved bill.</p>
+        <div class="clear-sale-actions">
+            <button class="btn btn-secondary" id="cancel-clear-sale" type="button">Cancel</button>
+            <button class="btn btn-danger" id="confirm-clear-sale" type="button">Clear bill</button>
+        </div>
     </section>
 </div>
 <script>
-    const products = {{ products| tojson }}; const customers = {{ customers| tojson }}; const rows = document.querySelector('#item-rows'); const money = value => (Number(value || 0)).toFixed(2);
-    const productList = document.querySelector('#product-options');
-    function addLine(selected = '', quantity = 1, rate = '') { const row = document.createElement('tr'); row.className = 'item-row'; const product = products.find(item => String(item.id) === String(selected)); row.innerHTML = `<td><input name="product_search" class="product-search search-picker" type="search" list="product-options" placeholder="Type product..." autocomplete="off" value="${product ? product.name : ''}" required><input name="product_id" class="product-picker" type="hidden" value="${selected}"></td><td class="item-unit"></td><td class="item-sku"></td><td><input name="quantity" class="quantity" type="number" min="1" step="1" value="${quantity}" required></td><td><input name="rate" class="rate" type="number" min="0" step="0.01" value="${rate}" required></td><td class="line-total">0.00</td><td><button class="remove-line" title="Remove item" type="button">&times;</button></td>`; rows.append(row); updateRow(row); }
+    const products = {{ products| tojson }}; const customers = {{ customers| tojson }}; const companyState = {{ (selected_company['state'] if selected_company and 'state' in selected_company.keys() else '')| tojson }}; const rows = document.querySelector('#item-rows'); const money = value => (Number(value || 0)).toFixed(2);
+    function addLine(selected = '', quantity = 1, rate = '', focusProduct = false) { const row = document.createElement('tr'); row.className = 'item-row'; const product = products.find(item => String(item.id) === String(selected)); row.innerHTML = `<td><input name="product_search" class="product-search search-picker" type="search" list="product-options" placeholder="Type product..." autocomplete="off" value="${product ? product.name : ''}" required><input name="product_id" class="product-picker" type="hidden" value="${selected}"></td><td class="item-unit"></td><td class="item-sku"></td><td><input name="quantity" class="quantity" type="number" min="1" step="1" value="${quantity}" required></td><td><input name="rate" class="rate" type="number" min="0" step="0.01" value="${rate}" required></td><td class="line-total">0.00</td><td class="line-gst-rate">0.00%</td><td class="line-gst">0.00</td><td><button class="remove-line" title="Remove item" type="button">&times;</button></td>`; rows.append(row); updateRow(row); if (focusProduct) row.querySelector('.product-search').focus(); }
+    function addAndFocusLine() { addLine('', 1, '', true); }
     function selectedProduct(row) { const value = row.querySelector('.product-search').value.trim().toLowerCase(); return products.find(item => item.name.toLowerCase() === value || `${item.name} (${item.sku})`.toLowerCase() === value); }
-    function updateRow(row) { const product = selectedProduct(row); row.querySelector('.product-picker').value = product ? product.id : ''; if (product) { row.querySelector('.item-unit').textContent = product.unit; row.querySelector('.item-sku').textContent = product.sku; if (!row.querySelector('.rate').value) row.querySelector('.rate').value = (product.price_cents / 100).toFixed(2); } else { row.querySelector('.item-unit').textContent = ''; row.querySelector('.item-sku').textContent = ''; } row.querySelector('.line-total').textContent = money(Number(row.querySelector('.quantity').value) * Number(row.querySelector('.rate').value)); updateTotals(); }
-    function updateTotals() { let taxable = 0; document.querySelectorAll('.item-row').forEach(row => taxable += Number(row.querySelector('.quantity').value) * Number(row.querySelector('.rate').value)); const other = Number(document.querySelector('#other-charges').value); const tax = ['cgst_rate', 'sgst_rate', 'igst_rate'].reduce((sum, name) => sum + taxable * Number(document.querySelector(`[name=${name}]`).value) / 100, 0); document.querySelector('#taxable-total').textContent = money(taxable); document.querySelector('#gross-total').textContent = money(taxable + other); document.querySelector('#total-tax').textContent = money(tax); document.querySelector('#net-total').textContent = money(Math.round((taxable + other + tax) * 100) / 100); }
-    function updateCustomer() { const value = document.querySelector('#customer-search').value.trim().toLowerCase(); const customer = customers.find(item => item.name.toLowerCase() === value || `${item.name} (${item.customer_code})`.toLowerCase() === value); document.querySelector('#customer-picker').value = customer ? customer.id : ''; document.querySelector('#customer-details').innerHTML = customer ? `<strong>${customer.name}</strong><span>${customer.billing_address || ''}${customer.city ? ', ' + customer.city : ''}${customer.state ? ', ' + customer.state : ''}</span><span>${customer.phone || ''} ${customer.email || ''}</span><span>Tax ID: ${customer.tax_id || '-'}</span>` : '<span>Select a customer to view address and contact details.</span>'; }
+    function updateRow(row) { const product = selectedProduct(row); row.querySelector('.product-picker').value = product ? product.id : ''; if (product) { row.querySelector('.item-unit').textContent = product.unit; row.querySelector('.item-sku').textContent = product.sku; if (!row.querySelector('.rate').value) row.querySelector('.rate').value = (product.price_cents / 100).toFixed(2); } else { row.querySelector('.item-unit').textContent = ''; row.querySelector('.item-sku').textContent = ''; } const lineTotal = Number(row.querySelector('.quantity').value) * Number(row.querySelector('.rate').value); const customer = customers.find(item => String(item.id) === document.querySelector('#customer-picker').value); const sameState = product && companyState && customer && customer.state && companyState.trim().toLowerCase() === customer.state.trim().toLowerCase(); const gstRate = Number(product ? product.tax_rate : 0); const gst = Math.round((lineTotal * gstRate / 100) * 100) / 100; row.querySelector('.line-total').textContent = money(lineTotal); row.querySelector('.line-gst-rate').textContent = `${gstRate.toFixed(2)}%`; row.querySelector('.line-gst').textContent = money(gst); row.dataset.gst = gst; row.dataset.cgst = sameState ? Math.round(gst * 50) / 100 : 0; row.dataset.sgst = sameState ? gst - Number(row.dataset.cgst) : 0; row.dataset.igst = sameState ? 0 : gst; updateTotals(); }
+    function focusQuantityAfterProductSelection(row) { if (selectedProduct(row)) row.querySelector('.quantity').focus(); }
+    function updateTotals() { let taxable = 0, cgst = 0, sgst = 0, igst = 0; document.querySelectorAll('.item-row').forEach(row => { taxable += Number(row.querySelector('.quantity').value) * Number(row.querySelector('.rate').value); cgst += Number(row.dataset.cgst || 0); sgst += Number(row.dataset.sgst || 0); igst += Number(row.dataset.igst || 0); }); const other = Number(document.querySelector('#other-charges').value); const tax = cgst + sgst + igst; document.querySelector('#taxable-total').textContent = money(taxable); document.querySelector('#gross-total').textContent = money(taxable + other); document.querySelector('#total-tax').textContent = money(tax); document.querySelector('#cgst-total').textContent = money(cgst); document.querySelector('#sgst-total').textContent = money(sgst); document.querySelector('#igst-total').textContent = money(igst); document.querySelector('#net-total').textContent = money(Math.round((taxable + other + tax) * 100) / 100); }
+    function updateCustomer() { const value = document.querySelector('#customer-search').value.trim().toLowerCase(); const customer = customers.find(item => item.name.toLowerCase() === value || `${item.name} (${item.customer_code})`.toLowerCase() === value); document.querySelector('#customer-picker').value = customer ? customer.id : ''; document.querySelector('#customer-details').innerHTML = customer ? `<strong>${customer.name}</strong><span>${customer.billing_address || ''}${customer.city ? ', ' + customer.city : ''}${customer.state ? ', ' + customer.state : ''}</span><span>${customer.phone || ''} ${customer.email || ''}</span><span>Tax ID: ${customer.tax_id || '-'}</span>` : '<span>Select a customer to view address and contact details.</span>'; document.querySelectorAll('.item-row').forEach(updateRow); }
     function normalizeNumberInput(input, decimals) { if (decimals === 0) input.value = input.value.replace(/\D/g, ''); else input.value = input.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1').replace(new RegExp(`(\\.\\d{${decimals}})\\d+`), '$1'); }
-    document.querySelector('#customer-search').addEventListener('input', updateCustomer); document.querySelector('#add-line').addEventListener('click', () => addLine()); rows.addEventListener('change', event => { if (event.target.matches('.product-search')) updateRow(event.target.closest('.item-row')); }); rows.addEventListener('input', event => { if (event.target.matches('.product-search,.quantity,.rate')) { if (event.target.matches('.quantity')) normalizeNumberInput(event.target, 0); if (event.target.matches('.rate')) normalizeNumberInput(event.target, 2); updateRow(event.target.closest('.item-row')); } }); rows.addEventListener('keydown', event => { if (event.target.matches('.quantity,.rate') && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) { event.preventDefault(); const amount = event.key === 'ArrowUp' ? 1 : -1; event.target.value = Math.max(Number(event.target.min || 0), Number(event.target.value || 0) + amount); normalizeNumberInput(event.target, event.target.matches('.quantity') ? 0 : 2); updateRow(event.target.closest('.item-row')); } }); rows.addEventListener('click', event => { if (event.target.matches('.remove-line')) { if (document.querySelectorAll('.item-row').length > 1) event.target.closest('.item-row').remove(); updateTotals(); } }); document.querySelectorAll('.tax-inputs input').forEach(input => input.addEventListener('input', updateTotals)); if (!document.querySelector('.item-row')) addLine(); else document.querySelectorAll('.item-row').forEach(updateRow); if (window.selectedCustomer) { document.querySelector('#customer-search').value = `${window.selectedCustomer.name} (${window.selectedCustomer.customer_code})`; } updateCustomer();
-    const billSearchModal = document.querySelector('#bill-search-modal'); const billSearchForm = document.querySelector('#bill-search-form'); const billSearchResults = document.querySelector('#bill-search-results'); const openBillSearch = () => { billSearchModal.hidden = false; document.querySelector('#bill-search').focus(); }; const closeBillSearch = () => { billSearchModal.hidden = true; }; document.querySelector('#open-bill-search').addEventListener('click', openBillSearch); billSearchModal.querySelectorAll('[data-close-bill-search]').forEach(element => element.addEventListener('click', closeBillSearch)); document.addEventListener('keydown', event => { if (event.key === 'Escape' && !billSearchModal.hidden) closeBillSearch(); }); billSearchForm.addEventListener('submit', async event => { event.preventDefault(); const query = new URLSearchParams(new FormData(billSearchForm)).toString(); billSearchResults.innerHTML = '<p class="empty-note">Searching...</p>'; try { const response = await fetch(`${billSearchForm.action}?${query}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } }); if (!response.ok) throw new Error('Search failed'); const html = await response.text(); const parsed = new DOMParser().parseFromString(html, 'text/html'); const results = parsed.querySelector('#bill-search-results'); billSearchResults.innerHTML = results ? results.innerHTML : '<p class="empty-note">No bills found.</p>'; } catch (error) { billSearchResults.innerHTML = '<p class="empty-note">Unable to search bills. Try again.</p>'; } });
+    const clearSaleModal = document.querySelector('#clear-sale-modal'); const closeClearSale = () => { clearSaleModal.hidden = true; }; const requestClearSale = () => { const hasData = document.querySelector('#customer-picker').value || Array.from(document.querySelectorAll('.product-picker')).some(input => input.value); if (hasData) clearSaleModal.hidden = false; else window.location.href = '{{ url_for("sales") }}'; }; document.querySelector('#clear-sale').addEventListener('click', requestClearSale); document.querySelector('#cancel-clear-sale').addEventListener('click', closeClearSale); document.querySelector('#confirm-clear-sale').addEventListener('click', () => { window.location.href = '{{ url_for("sales") }}'; }); clearSaleModal.querySelectorAll('[data-close-clear-sale]').forEach(element => element.addEventListener('click', closeClearSale)); document.addEventListener('keydown', event => { if (event.key === 'Escape' && !clearSaleModal.hidden) closeClearSale(); }); document.querySelector('#customer-search').addEventListener('input', updateCustomer); document.querySelector('#add-line').addEventListener('click', addAndFocusLine); document.querySelector('#add-line-bottom').addEventListener('click', addAndFocusLine); document.addEventListener('keydown', event => { if (event.altKey && event.key.toLowerCase() === 'n' && !event.ctrlKey && !event.metaKey) { event.preventDefault(); addAndFocusLine(); } }); rows.addEventListener('change', event => { if (event.target.matches('.product-search')) { const row = event.target.closest('.item-row'); updateRow(row); focusQuantityAfterProductSelection(row); } }); rows.addEventListener('input', event => { if (event.target.matches('.product-search,.quantity,.rate')) { if (event.target.matches('.quantity')) normalizeNumberInput(event.target, 0); if (event.target.matches('.rate')) normalizeNumberInput(event.target, 2); updateRow(event.target.closest('.item-row')); } }); rows.addEventListener('keydown', event => { if (event.target.matches('.quantity,.rate') && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) { event.preventDefault(); const amount = event.key === 'ArrowUp' ? 1 : -1; event.target.value = Math.max(Number(event.target.min || 0), Number(event.target.value || 0) + amount); normalizeNumberInput(event.target, event.target.matches('.quantity') ? 0 : 2); updateRow(event.target.closest('.item-row')); } }); rows.addEventListener('click', event => { if (event.target.matches('.remove-line')) { if (document.querySelectorAll('.item-row').length > 1) event.target.closest('.item-row').remove(); updateTotals(); } }); document.querySelectorAll('.tax-inputs input').forEach(input => input.addEventListener('input', updateTotals)); if (!document.querySelector('.item-row')) addLine(); else document.querySelectorAll('.item-row').forEach(updateRow); if (window.selectedCustomer) { document.querySelector('#customer-search').value = `${window.selectedCustomer.name} (${window.selectedCustomer.customer_code})`; } updateCustomer();
 </script>
 {% endblock %}

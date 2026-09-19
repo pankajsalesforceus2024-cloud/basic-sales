@@ -147,6 +147,13 @@
 .invoice-items tbody tr {
   height: 42px;
 }
+.invoice-items tbody td {
+  border-top: 0;
+  border-bottom: 0;
+}
+.invoice-items tbody tr:last-child td {
+  border-bottom: 1.2px solid #111;
+}
 .invoice-bottom {
   display: grid;
   grid-template-columns: 1fr 170px;
@@ -265,10 +272,80 @@ body {
   background: #fff;
   border-right: 1px solid #e2e8eb;
 }
-.app-sidebar .brand {
+.sidebar-brand-row {
+  position: relative;
   display: flex;
   align-items: center;
-  padding: 0 12px 30px;
+  gap: 8px;
+  padding: 0 4px 30px;
+}
+.app-sidebar .brand {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  padding: 0 4px;
+}
+.sidebar-toggle {
+  position: absolute;
+  top: 0;
+  right: -28px;
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  padding: 0 0 3px;
+  color: var(--leaf-dark);
+  background: #e4f3ed;
+  border: 0;
+  border-radius: 5px;
+  font-size: 1.45rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+.sidebar-toggle:hover {
+  background: #d2ebe1;
+}
+.app-body.sidebar-collapsed .app-sidebar {
+  width: 76px;
+  padding-right: 10px;
+  padding-left: 10px;
+}
+.app-body.sidebar-collapsed .app-main {
+  margin-left: 76px;
+}
+.app-body.sidebar-collapsed .sidebar-brand-row {
+  justify-content: center;
+  padding-right: 0;
+  padding-left: 0;
+}
+.app-body.sidebar-collapsed .sidebar-toggle {
+  right: -24px;
+}
+.app-body.sidebar-collapsed .sidebar-toggle {
+  transform: rotate(180deg);
+}
+.app-body.sidebar-collapsed .app-sidebar .brand {
+  flex: 0 0 auto;
+  padding: 0;
+}
+.app-body.sidebar-collapsed .app-sidebar .brand > span:last-child,
+.app-body.sidebar-collapsed .sidebar-label,
+.app-body.sidebar-collapsed .nav-label,
+.app-body.sidebar-collapsed .sidebar-group-name,
+.app-body.sidebar-collapsed .group-chevron {
+  display: none;
+}
+.app-body.sidebar-collapsed .sidebar-link {
+  justify-content: center;
+  gap: 0;
+  padding-right: 8px;
+  padding-left: 8px;
+}
+.app-body.sidebar-collapsed .sidebar-submenu {
+  display: none;
+}
 }
 .sidebar-label {
   margin: 8px 13px 10px;
@@ -534,12 +611,79 @@ body {
   max-width: 1280px;
 }
 .sales-heading {
-  margin-bottom: 26px;
+  margin-bottom: 14px;
+  padding-bottom: 16px !important;
+}
+.sales-heading .eyebrow {
+  margin-bottom: 8px;
+}
+.sales-heading h1 {
+  font-size: clamp(2.35rem, 4vw, 3.5rem);
+  line-height: 1;
+}
+.sales-heading .dashboard-copy {
+  margin: 8px 0 0;
+  line-height: 1.4;
 }
 .sales-heading-actions {
   display: flex;
   align-items: center;
   gap: 14px;
+}
+.recent-bills {
+  width: min(460px, 48vw);
+  padding: 9px 11px;
+  background: #f7faf9;
+  border: 1px solid #dfe9e5;
+  border-radius: 6px;
+}
+.recent-bills-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+  color: var(--leaf-dark);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.recent-bills-heading small {
+  color: #84918f;
+  font-size: 0.63rem;
+  font-weight: 500;
+}
+.recent-bills-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+}
+.recent-bills-list a {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding: 5px 6px;
+  color: var(--ink);
+  border-left: 2px solid transparent;
+  text-decoration: none;
+}
+.recent-bills-list a:hover {
+  border-left-color: var(--leaf);
+  background: #eaf5f0;
+}
+.recent-bills-list strong,
+.recent-bills-list span,
+.recent-bills-list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-bills-list strong {
+  font-size: 0.73rem;
+}
+.recent-bills-list span,
+.recent-bills-list small {
+  color: #748084;
+  font-size: 0.62rem;
 }
 .sales-layout {
   display: grid;
@@ -673,6 +817,20 @@ body {
   max-height: 420px;
   overflow-y: auto;
 }
+.clear-sale-dialog {
+  max-width: 430px;
+}
+.clear-sale-copy {
+  margin: 0 0 22px;
+  color: #657277;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.clear-sale-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
 .sales-form {
   overflow: hidden;
 }
@@ -684,6 +842,8 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding-top: 12px;
+  padding-bottom: 12px;
   background: #f2f8f5;
 }
 .company-strip select {
@@ -797,6 +957,22 @@ body {
 }
 .sales-form textarea {
   resize: vertical;
+}
+.item-add-bottom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 22px;
+  border-bottom: 1px solid #e8eded;
+  background: #fbfcfc;
+}
+.btn-compact-add {
+  padding: 6px 10px;
+  font-size: 0.75rem;
+}
+.item-add-bottom span {
+  color: #7b898c;
+  font-size: 0.72rem;
 }
 .totals-section {
   display: grid;
@@ -1823,6 +1999,12 @@ a {
     padding: 14px 12px 10px;
     border-right: 0;
     border-bottom: 1px solid #e2e8eb;
+  }
+  .sidebar-brand-row {
+    padding-bottom: 12px;
+  }
+  .sidebar-toggle {
+    display: none;
   }
   .app-sidebar .brand {
     padding: 0 8px 12px;

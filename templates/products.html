@@ -40,9 +40,11 @@
                     <th>Name</th>
                     <th>SKU</th>
                     <th>Price</th>
+                    <th>GST/Tax Rate</th>
                     <th>Group</th>
                     <th>Category</th>
                     <th>Unit</th>
+                    <th>Visibility</th>
                     <th>Stock</th>
                     <th>Status</th>
                     <th><span class="visually-hidden">Actions</span></th>
@@ -54,9 +56,11 @@
                     <td><strong>{{ product.name|e }}</strong></td>
                     <td>{{ product.sku|e }}</td>
                     <td>{{ '%.2f'|format(product.price_cents / 100) }}</td>
+                    <td>{{ '%.2f'|format(product.tax_rate or 0) }}%</td>
                     <td>{{ product.product_group|e }}</td>
                     <td>{{ (product.category or '-')|e }}</td>
                     <td>{{ product.unit|e }}</td>
+                    <td>{{ 'All companies' if product.shared_across_companies else 'Company only' }}</td>
                     <td>{{ product.stock_quantity }}</td>
                     <td><span class="status-pill status-{{ product.status }}">{{ product.status|capitalize }}</span>
                     </td>
@@ -70,7 +74,7 @@
                 </tr>
                 {% endfor %}
                 <tr id="product-empty-row" hidden>
-                    <td class="empty-table" colspan="9">No products found.</td>
+                    <td class="empty-table" colspan="10">No products found.</td>
                 </tr>
             </tbody>
         </table>

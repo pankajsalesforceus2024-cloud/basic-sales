@@ -5,6 +5,7 @@ import re
 import secrets
 import sqlite3
 import time
+from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 from datetime import date, datetime, timedelta, timezone
 from functools import wraps
@@ -89,6 +90,8 @@ def init_db():
                 supplier TEXT,
                 barcode TEXT COLLATE NOCASE,
                 status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+                company_id INTEGER,
+                shared_across_companies INTEGER NOT NULL DEFAULT 1 CHECK (shared_across_companies IN (0, 1)),
                 created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku);
@@ -107,6 +110,8 @@ def init_db():
                 country TEXT NOT NULL DEFAULT 'India',
                 notes TEXT,
                 status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+                company_id INTEGER,
+                shared_across_companies INTEGER NOT NULL DEFAULT 0 CHECK (shared_across_companies IN (0, 1)),
                 created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_customers_code ON customers(customer_code);
@@ -135,6 +140,7 @@ def init_db():
                 tax_id TEXT,
                 tin_number TEXT,
                 terms_conditions TEXT,
+                state TEXT,
                 state_code TEXT,
                 pan_number TEXT,
                 declaration TEXT,
@@ -181,6 +187,12 @@ def init_db():
                 quantity REAL NOT NULL CHECK (quantity > 0),
                 unit_price_cents INTEGER NOT NULL CHECK (unit_price_cents >= 0),
                 line_total_cents INTEGER NOT NULL CHECK (line_total_cents >= 0),
+                gst_rate REAL NOT NULL DEFAULT 0,
+                gst_cents INTEGER NOT NULL DEFAULT 0,
+                cgst_cents INTEGER NOT NULL DEFAULT 0,
+                sgst_cents INTEGER NOT NULL DEFAULT 0,
+                igst_cents INTEGER NOT NULL DEFAULT 0,
+                tax_type TEXT NOT NULL DEFAULT 'IGST',
                 FOREIGN KEY (sales_id) REFERENCES sales(id) ON DELETE CASCADE,
                 FOREIGN KEY (product_id) REFERENCES products(id)
             );
@@ -192,9 +204,14 @@ def init_db():
                 VALUES ('sales_details_default_months', 3);
             """
         )
+        existing_company_columns = {
+            row[1] for row in db.execute("PRAGMA table_info(companies)").fetchall()
+        }
+        if "state" not in existing_company_columns:
+            db.execute("ALTER TABLE companies ADD COLUMN state TEXT")
         db.execute(
-            "INSERT INTO companies (name, address, phone, mobile, email, tax_id, terms_conditions, state_code, pan_number, declaration, created_at) "
-            "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM companies)",
+            "INSERT INTO companies (name, address, phone, mobile, email, tax_id, terms_conditions, state, state_code, pan_number, declaration, created_at) "
+            "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM companies)",
             (
                 "ASHMITA ASSOCIATES",
                 "72, Rajamal Ka Talab, Chandi Ki Taksal, Jaipur-2",
@@ -203,6 +220,7 @@ def init_db():
                 "ashmita.associates5@rediffmail.com",
                 "08AABHJ7786H1ZT",
                 "1) If bill not paid within 15 days, the interest will be charged @18% per annum.\n2) All disputes are subject to Jaipur Jurisdiction only.\n3) Goods sold once shall not be returned.\n4) PAN No :- AABHJ7786H",
+                "Rajasthan",
                 "08",
                 "AABHJ7786H",
                 "This is to certify that we have valid registration under GST and above information are true & correct.",
@@ -211,7 +229,7 @@ def init_db():
         )
         db.execute(
             "UPDATE companies SET name=?, address=?, phone=?, mobile=?, email=?, tax_id=?, "
-            "terms_conditions=?, state_code=?, pan_number=?, declaration=? "
+            "terms_conditions=?, state=?, state_code=?, pan_number=?, declaration=? "
             "WHERE name = 'Default Company' AND address = 'Add company address in the admin database'",
             (
                 "ASHMITA ASSOCIATES",
@@ -221,6 +239,7 @@ def init_db():
                 "ashmita.associates5@rediffmail.com",
                 "08AABHJ7786H1ZT",
                 "1) If bill not paid within 15 days, the interest will be charged @18% per annum.\n2) All disputes are subject to Jaipur Jurisdiction only.\n3) Goods sold once shall not be returned.\n4) PAN No :- AABHJ7786H",
+                "Rajasthan",
                 "08",
                 "AABHJ7786H",
                 "This is to certify that we have valid registration under GST and above information are true & correct.",
@@ -247,10 +266,19 @@ def init_db():
             "supplier": "TEXT",
             "barcode": "TEXT",
             "status": "TEXT NOT NULL DEFAULT 'active'",
+            "company_id": "INTEGER",
+            "shared_across_companies": "INTEGER NOT NULL DEFAULT 1",
         }
         for column, definition in product_columns.items():
             if column not in existing_columns:
                 db.execute(f"ALTER TABLE products ADD COLUMN {column} {definition}")
+        default_product_company = db.execute(
+            "SELECT company_id FROM company_preferences WHERE preference_key = 'default'"
+        ).fetchone()
+        if default_product_company:
+            db.execute("UPDATE products SET company_id = ? WHERE company_id IS NULL", (default_product_company[0],))
+        db.execute("UPDATE products SET shared_across_companies = 1 WHERE shared_across_companies IS NULL")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_products_company ON products(company_id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_products_group ON products(product_group)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_products_barcode ON products(barcode)")
         existing_customer_columns = {
@@ -270,11 +298,19 @@ def init_db():
             "country": "TEXT NOT NULL DEFAULT 'India'",
             "notes": "TEXT",
             "status": "TEXT NOT NULL DEFAULT 'active'",
+            "company_id": "INTEGER",
+            "shared_across_companies": "INTEGER NOT NULL DEFAULT 0",
             "created_at": "TEXT NOT NULL DEFAULT ''",
         }
         for column, definition in customer_columns.items():
             if column not in existing_customer_columns:
                 db.execute(f"ALTER TABLE customers ADD COLUMN {column} {definition}")
+        default_customer_company = db.execute(
+            "SELECT company_id FROM company_preferences WHERE preference_key = 'default'"
+        ).fetchone()
+        if default_customer_company:
+            db.execute("UPDATE customers SET company_id = ? WHERE company_id IS NULL", (default_customer_company[0],))
+        db.execute("CREATE INDEX IF NOT EXISTS idx_customers_company ON customers(company_id)")
         existing_company_columns = {
             row[1] for row in db.execute("PRAGMA table_info(companies)").fetchall()
         }
@@ -282,6 +318,7 @@ def init_db():
             "mobile": "TEXT",
             "tin_number": "TEXT",
             "terms_conditions": "TEXT",
+            "state": "TEXT",
             "state_code": "TEXT",
             "pan_number": "TEXT",
             "declaration": "TEXT",
@@ -289,6 +326,20 @@ def init_db():
         for column, definition in company_columns.items():
             if column not in existing_company_columns:
                 db.execute(f"ALTER TABLE companies ADD COLUMN {column} {definition}")
+        existing_detail_columns = {
+            row[1] for row in db.execute("PRAGMA table_info(sales_details)").fetchall()
+        }
+        detail_columns = {
+            "gst_rate": "REAL NOT NULL DEFAULT 0",
+            "gst_cents": "INTEGER NOT NULL DEFAULT 0",
+            "cgst_cents": "INTEGER NOT NULL DEFAULT 0",
+            "sgst_cents": "INTEGER NOT NULL DEFAULT 0",
+            "igst_cents": "INTEGER NOT NULL DEFAULT 0",
+            "tax_type": "TEXT NOT NULL DEFAULT 'IGST'",
+        }
+        for column, definition in detail_columns.items():
+            if column not in existing_detail_columns:
+                db.execute(f"ALTER TABLE sales_details ADD COLUMN {column} {definition}")
         customer_codes = set()
         for customer_id, customer_code in db.execute("SELECT id, customer_code FROM customers ORDER BY id"):
             normalized_code = (customer_code or "").strip()
@@ -882,13 +933,100 @@ def dashboard():
     return render_template("dashboard.html", username=session["username"], customer_count=customer_count, product_count=product_count)
 
 
+def _company_form_data(source=None):
+    return {field: (source[field] or "") if source is not None else "" for field in (
+        "name", "address", "phone", "mobile", "email", "tax_id", "state", "state_code",
+        "pan_number", "terms_conditions", "declaration",
+    )}
+
+
+def _validate_company_form(data):
+    errors = []
+    if not data.get("name", "").strip():
+        errors.append("Company name is required.")
+    if len(data.get("name", "").strip()) > 160:
+        errors.append("Company name must be 160 characters or fewer.")
+    if not data.get("state", "").strip():
+        errors.append("Company state is required for GST calculation.")
+    if len(data.get("state", "").strip()) > 80:
+        errors.append("Company state must be 80 characters or fewer.")
+    if data.get("email", "").strip() and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", data["email"].strip()):
+        errors.append("Email address format is invalid.")
+    return errors
+
+
+@app.route("/companies")
+@login_required
+def companies():
+    db = get_db()
+    rows = db.execute(
+        "SELECT c.*, p.company_id IS NOT NULL AS is_default "
+        "FROM companies c LEFT JOIN company_preferences p ON p.company_id = c.id "
+        "AND p.preference_key = 'default' ORDER BY c.name"
+    ).fetchall()
+    return render_template("companies.html", companies=rows)
+
+
+@app.route("/companies/new", methods=("GET", "POST"))
+@login_required
+def add_company():
+    form_data = {key: request.form.get(key, "").strip() for key in _company_form_data()}
+    if request.method == "POST":
+        errors = _validate_company_form(form_data)
+        if errors:
+            return render_template("company_form.html", form_data=form_data, field_errors=errors)
+        db = get_db()
+        db.execute(
+            "INSERT INTO companies (name, address, phone, mobile, email, tax_id, state, state_code, pan_number, terms_conditions, declaration, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            tuple(form_data[field] or None for field in ("name", "address", "phone", "mobile", "email", "tax_id", "state", "state_code", "pan_number", "terms_conditions", "declaration"))
+            + (datetime.now(timezone.utc).isoformat(),),
+        )
+        company_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        if db.execute("SELECT 1 FROM company_preferences WHERE preference_key = 'default'").fetchone() is None:
+            db.execute("INSERT INTO company_preferences (preference_key, company_id) VALUES ('default', ?)", (company_id,))
+        db.commit()
+        flash("Company added successfully.", "success")
+        return redirect(url_for("companies"))
+    return render_template("company_form.html", form_data=form_data, field_errors=[])
+
+
+@app.route("/companies/<int:company_id>/edit", methods=("GET", "POST"))
+@login_required
+def edit_company(company_id):
+    company = get_db().execute("SELECT * FROM companies WHERE id = ?", (company_id,)).fetchone()
+    if company is None:
+        flash("Company not found.", "danger")
+        return redirect(url_for("companies"))
+    form_data = _company_form_data(company)
+    if request.method == "POST":
+        form_data = {key: request.form.get(key, "").strip() for key in form_data}
+        errors = _validate_company_form(form_data)
+        if errors:
+            return render_template("company_form.html", form_data=form_data, field_errors=errors, editing_company=company)
+        get_db().execute(
+            "UPDATE companies SET name=?, address=?, phone=?, mobile=?, email=?, tax_id=?, state=?, state_code=?, pan_number=?, terms_conditions=?, declaration=? WHERE id=?",
+            tuple(form_data[field] or None for field in ("name", "address", "phone", "mobile", "email", "tax_id", "state", "state_code", "pan_number", "terms_conditions", "declaration")) + (company_id,),
+        )
+        get_db().commit()
+        flash("Company updated successfully.", "success")
+        return redirect(url_for("companies"))
+    return render_template("company_form.html", form_data=form_data, field_errors=[], editing_company=company)
+
+
 @app.route("/products")
 @login_required
 def products():
+    default_company = get_db().execute(
+        "SELECT company_id FROM company_preferences WHERE preference_key = 'default'"
+    ).fetchone()
+    company_id = default_company["company_id"] if default_company else None
     rows = get_db().execute(
         "SELECT id, name, sku, price_cents, product_group, category, brand, description, "
         "unit, cost_price_cents, tax_rate, stock_quantity, reorder_level, supplier, "
-        "barcode, status, created_at FROM products ORDER BY id DESC"
+        "barcode, status, company_id, shared_across_companies, created_at FROM products "
+        "WHERE shared_across_companies = 1 OR company_id = ? ORDER BY id DESC",
+        (company_id,),
     ).fetchall()
     product_list = []
     for row in rows:
@@ -944,6 +1082,7 @@ def add_product():
         supplier = form_data.get("supplier", "").strip()
         barcode = form_data.get("barcode", "").strip()
         status = form_data.get("status", "active").strip()
+        shared_across_companies = 1 if form_data.get("shared_across_companies", "on") == "on" else 0
         error = None
 
         try:
@@ -968,14 +1107,19 @@ def add_product():
             write_db = None
             try:
                 write_db = open_database()
+                default_company = write_db.execute(
+                    "SELECT company_id FROM company_preferences WHERE preference_key = 'default'"
+                ).fetchone()
+                if default_company is None:
+                    raise ValueError("Select a default company before adding a product.")
                 write_db.execute(
-                    "INSERT INTO products (name, sku, price_cents, product_group, category, brand, description, unit, cost_price_cents, tax_rate, stock_quantity, reorder_level, supplier, barcode, status, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO products (name, sku, price_cents, product_group, category, brand, description, unit, cost_price_cents, tax_rate, stock_quantity, reorder_level, supplier, barcode, status, company_id, shared_across_companies, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         name, sku, price_cents, product_group, category or None,
                         brand or None, description or None, unit, cost_price_cents,
                         tax_rate_value, stock_quantity_value, reorder_level_value,
-                        supplier or None, barcode or None, status,
+                        supplier or None, barcode or None, status, default_company["company_id"], shared_across_companies,
                         datetime.now(timezone.utc).isoformat(),
                     ),
                 )
@@ -1026,6 +1170,7 @@ def edit_product(product_id):
             "supplier": product["supplier"] or "",
             "barcode": product["barcode"] or "",
             "status": product["status"],
+            "shared_across_companies": product["shared_across_companies"],
         }
         return render_template(
             "add_product.html",
@@ -1063,14 +1208,15 @@ def edit_product(product_id):
 
     try:
         get_db().execute(
-            "UPDATE products SET name = ?, sku = ?, price_cents = ?, product_group = ?, category = ?, brand = ?, description = ?, unit = ?, cost_price_cents = ?, tax_rate = ?, stock_quantity = ?, reorder_level = ?, supplier = ?, barcode = ?, status = ? WHERE id = ?",
+            "UPDATE products SET name = ?, sku = ?, price_cents = ?, product_group = ?, category = ?, brand = ?, description = ?, unit = ?, cost_price_cents = ?, tax_rate = ?, stock_quantity = ?, reorder_level = ?, supplier = ?, barcode = ?, status = ?, shared_across_companies = ? WHERE id = ?",
             (
                 form_data["name"].strip(), form_data["sku"].strip(), price_cents,
                 form_data.get("product_group", "General").strip(), form_data.get("category", "").strip() or None,
                 form_data.get("brand", "").strip() or None, form_data.get("description", "").strip() or None,
                 form_data.get("unit", "piece").strip(), cost_price_cents, tax_rate_value,
                 stock_quantity_value, reorder_level_value, form_data.get("supplier", "").strip() or None,
-                form_data.get("barcode", "").strip() or None, form_data.get("status", "active").strip(), product_id,
+                form_data.get("barcode", "").strip() or None, form_data.get("status", "active").strip(),
+                1 if form_data.get("shared_across_companies") == "on" else 0, product_id,
             ),
         )
         get_db().commit()
@@ -1136,17 +1282,6 @@ def settings():
             if selected_company is None:
                 raise ValueError("Select a valid default company.")
             write_db.execute(
-                "UPDATE companies SET name=?, address=?, phone=?, mobile=?, tax_id=? WHERE id=?",
-                (
-                    request.form.get("company_name", "").strip() or "Default Company",
-                    request.form.get("company_address", "").strip() or None,
-                    request.form.get("company_phone", "").strip() or None,
-                    request.form.get("company_mobile", "").strip() or None,
-                    request.form.get("company_tax_id", "").strip() or None,
-                    company_id,
-                ),
-            )
-            write_db.execute(
                 "INSERT INTO company_preferences (preference_key, company_id) VALUES ('default', ?) "
                 "ON CONFLICT(preference_key) DO UPDATE SET company_id = excluded.company_id",
                 (company_id,),
@@ -1169,18 +1304,23 @@ def settings():
         "SELECT company_id FROM company_preferences WHERE preference_key = 'default'"
     ).fetchone()
     default_company_id = preference["company_id"] if preference else (companies[0]["id"] if companies else None)
-    selected_company = next((company for company in companies if company["id"] == default_company_id), None)
     return render_template("settings.html", settings=get_app_settings(), companies=companies,
-                           default_company_id=default_company_id, selected_company=selected_company,
+                           default_company_id=default_company_id,
                            sales_details_default_months=get_sales_details_default_months())
 
 
 @app.route("/customers")
 @login_required
 def customers():
+    default_company = get_db().execute(
+        "SELECT company_id FROM company_preferences WHERE preference_key = 'default'"
+    ).fetchone()
+    company_id = default_company["company_id"] if default_company else None
     rows = get_db().execute(
         "SELECT id, name, customer_code, phone, email, tax_id, billing_address, shipping_address, "
-        "city, state, postal_code, country, notes, status, created_at FROM customers ORDER BY id DESC"
+        "city, state, postal_code, country, notes, status, company_id, shared_across_companies, created_at "
+        "FROM customers WHERE shared_across_companies = 1 OR company_id = ? ORDER BY id DESC",
+        (company_id,),
     ).fetchall()
     customer_list = []
     for row in rows:
@@ -1202,8 +1342,13 @@ def add_customer():
             return render_template("customer_form.html", form_data=form_data, field_errors=field_errors)
 
         try:
+            default_company = get_db().execute(
+                "SELECT company_id FROM company_preferences WHERE preference_key = 'default'"
+            ).fetchone()
+            if default_company is None:
+                raise ValueError("Select a default company before adding a customer.")
             get_db().execute(
-                "INSERT INTO customers (name, customer_code, phone, email, tax_id, billing_address, shipping_address, city, state, postal_code, country, notes, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO customers (name, customer_code, phone, email, tax_id, billing_address, shipping_address, city, state, postal_code, country, notes, status, company_id, shared_across_companies, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     form_data["name"].strip(), form_data["customer_code"].strip(), form_data["phone"].strip(),
                     form_data.get("email", "").strip().lower() or None, form_data.get("tax_id", "").strip() or None,
@@ -1211,6 +1356,7 @@ def add_customer():
                     form_data.get("city", "").strip() or None, form_data.get("state", "").strip() or None,
                     form_data.get("postal_code", "").strip() or None, form_data.get("country", "India").strip(),
                     form_data.get("notes", "").strip() or None, form_data.get("status", "active").strip(),
+                    default_company["company_id"], 1 if form_data.get("shared_across_companies") == "on" else 0,
                     datetime.now(timezone.utc).isoformat(),
                 ),
             )
@@ -1236,7 +1382,7 @@ def edit_customer(customer_id):
     if request.method == "GET":
         form_data = {key: customer[key] or "" for key in (
             "name", "customer_code", "phone", "email", "tax_id", "billing_address", "shipping_address",
-            "city", "state", "postal_code", "country", "notes", "status"
+            "city", "state", "postal_code", "country", "notes", "status", "company_id", "shared_across_companies"
         )}
         return render_template("customer_form.html", form_data=form_data, field_errors={}, editing_customer=customer)
 
@@ -1248,14 +1394,15 @@ def edit_customer(customer_id):
         return render_template("customer_form.html", form_data=form_data, field_errors=field_errors, editing_customer=customer)
     try:
         get_db().execute(
-            "UPDATE customers SET name = ?, customer_code = ?, phone = ?, email = ?, tax_id = ?, billing_address = ?, shipping_address = ?, city = ?, state = ?, postal_code = ?, country = ?, notes = ?, status = ? WHERE id = ?",
+            "UPDATE customers SET name = ?, customer_code = ?, phone = ?, email = ?, tax_id = ?, billing_address = ?, shipping_address = ?, city = ?, state = ?, postal_code = ?, country = ?, notes = ?, status = ?, shared_across_companies = ? WHERE id = ?",
             (
                 form_data["name"].strip(), form_data["customer_code"].strip(), form_data["phone"].strip(),
                 form_data.get("email", "").strip().lower() or None, form_data.get("tax_id", "").strip() or None,
                 form_data["billing_address"].strip(), form_data.get("shipping_address", "").strip() or None,
                 form_data.get("city", "").strip() or None, form_data.get("state", "").strip() or None,
                 form_data.get("postal_code", "").strip() or None, form_data.get("country", "India").strip(),
-                form_data.get("notes", "").strip() or None, form_data.get("status", "active").strip(), customer_id,
+                form_data.get("notes", "").strip() or None, form_data.get("status", "active").strip(),
+                1 if form_data.get("shared_across_companies") == "on" else 0, customer_id,
             ),
         )
         get_db().commit()
@@ -1289,13 +1436,17 @@ def _sales_form_context(current_sale=None, search=""):
         "SELECT c.* FROM companies c JOIN company_preferences p ON p.company_id = c.id "
         "WHERE p.preference_key = 'default'"
     ).fetchone()
+    active_company_id = current_sale["company_id"] if current_sale else (default_company["id"] if default_company else None)
     customers = [dict(row) for row in db.execute(
         "SELECT id, name, customer_code, phone, email, tax_id, billing_address, "
-        "city, state, postal_code FROM customers WHERE status = 'active' ORDER BY name"
+        "city, state, postal_code FROM customers WHERE status = 'active' "
+        "AND (shared_across_companies = 1 OR company_id = ?) ORDER BY name",
+        (active_company_id,),
     ).fetchall()]
     products = [dict(row) for row in db.execute(
-        "SELECT id, name, sku, price_cents, unit, category FROM products "
-        "WHERE status = 'active' ORDER BY name"
+        "SELECT id, name, sku, price_cents, unit, category, tax_rate FROM products "
+        "WHERE status = 'active' AND (shared_across_companies = 1 OR company_id = ?) ORDER BY name",
+        (active_company_id,),
     ).fetchall()]
     sales_rows = db.execute(
         "SELECT id, invoice_no, invoice_date, customer_name, total_amount_cents "
@@ -1305,6 +1456,10 @@ def _sales_form_context(current_sale=None, search=""):
     ).fetchall() if search else db.execute(
         "SELECT id, invoice_no, invoice_date, customer_name, total_amount_cents "
         "FROM sales ORDER BY id DESC LIMIT 50"
+    ).fetchall()
+    recent_bills = db.execute(
+        "SELECT id, invoice_no, invoice_date, customer_name, total_amount_cents, created_at "
+        "FROM sales ORDER BY created_at DESC, id DESC LIMIT 5"
     ).fetchall()
     details = []
     if current_sale:
@@ -1317,11 +1472,12 @@ def _sales_form_context(current_sale=None, search=""):
         "customers": customers,
         "products": products,
         "sales_rows": sales_rows,
+        "recent_bills": recent_bills,
         "current_sale": current_sale,
         "sale_details": details,
         "next_invoice": next_invoice,
         "search": search,
-        "selected_company_id": current_sale["company_id"] if current_sale else (default_company["id"] if default_company else None),
+        "selected_company_id": active_company_id,
         "selected_company": (next((company for company in companies if company["id"] == current_sale["company_id"]), None) if current_sale else default_company),
         "today": datetime.now().date().isoformat(),
     }
@@ -1335,6 +1491,16 @@ def _money_cents(value, field_name):
     if amount < 0:
         raise ValueError(f"{field_name} cannot be negative.")
     return round(amount * 100)
+
+
+def calculate_gst(line_total_cents, gst_rate, company_state, customer_state):
+    rate = Decimal(str(gst_rate or 0))
+    gst_cents = int((Decimal(line_total_cents) * rate / Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    same_state = bool(company_state and customer_state and company_state.strip().casefold() == customer_state.strip().casefold())
+    if same_state:
+        cgst_cents = int((Decimal(gst_cents) / Decimal("2")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        return {"gst_cents": gst_cents, "cgst_cents": cgst_cents, "sgst_cents": gst_cents - cgst_cents, "igst_cents": 0, "tax_type": "CGST/SGST"}
+    return {"gst_cents": gst_cents, "cgst_cents": 0, "sgst_cents": 0, "igst_cents": gst_cents, "tax_type": "IGST"}
 
 
 def _save_sale(sale_id=None):
@@ -1382,19 +1548,22 @@ def _save_sale(sale_id=None):
             lines.append((product, quantity, rate_cents, round(quantity * rate_cents)))
     try:
         other_charges = _money_cents(form.get("other_charges"), "Other charges")
-        cgst_rate = float(form.get("cgst_rate", "0") or 0)
-        sgst_rate = float(form.get("sgst_rate", "0") or 0)
-        igst_rate = float(form.get("igst_rate", "0") or 0)
-        if min(cgst_rate, sgst_rate, igst_rate) < 0:
-            raise ValueError("Tax rates cannot be negative.")
     except ValueError as exc:
         errors.append(str(exc))
         other_charges = 0
-        cgst_rate = sgst_rate = igst_rate = 0
-    taxable_total = sum(line[3] for line in lines)
-    cgst_cents = round(taxable_total * cgst_rate / 100)
-    sgst_cents = round(taxable_total * sgst_rate / 100)
-    igst_cents = round(taxable_total * igst_rate / 100)
+    company_state = (company["state"] or company["state_code"]) if company else None
+    customer_state = customer["state"] if customer else None
+    calculated_lines = []
+    for product, quantity, rate_cents, line_total_cents in lines:
+        gst = calculate_gst(line_total_cents, product["tax_rate"], company_state, customer_state)
+        calculated_lines.append((product, quantity, rate_cents, line_total_cents, gst))
+    taxable_total = sum(line[3] for line in calculated_lines)
+    cgst_cents = sum(line[4]["cgst_cents"] for line in calculated_lines)
+    sgst_cents = sum(line[4]["sgst_cents"] for line in calculated_lines)
+    igst_cents = sum(line[4]["igst_cents"] for line in calculated_lines)
+    cgst_rate = cgst_cents * 100 / taxable_total if taxable_total else 0
+    sgst_rate = sgst_cents * 100 / taxable_total if taxable_total else 0
+    igst_rate = igst_cents * 100 / taxable_total if taxable_total else 0
     gross_total = taxable_total + other_charges
     calculated_total = gross_total + cgst_cents + sgst_cents + igst_cents
     round_off = int(round(calculated_total / 100) * 100 - calculated_total)
@@ -1425,11 +1594,13 @@ def _save_sale(sale_id=None):
             )
             sale_id = cursor.lastrowid
         else:
-            db.execute("UPDATE sales SET invoice_no=?, invoice_date=?, company_id=?, customer_id=?, customer_name=?, challan_no=?, challan_date=?, order_no=?, order_date=?, dispatched_by=?, bank_detail=?, remarks=?, gross_total_cents=?, other_charges_cents=?, taxable_total_cents=?, cgst_rate=?, cgst_cents=?, sgst_rate=?, sgst_cents=?, igst_rate=?, igst_cents=?, round_off_cents=?, total_amount_cents=? WHERE id=?", values[:-1] + (sale_id,))
+            db.execute("UPDATE sales SET invoice_no=?, invoice_date=?, company_id=?, customer_id=?, customer_name=?, challan_no=?, challan_date=?, order_no=?, order_date=?, dispatched_by=?, bank_detail=?, remarks=?, gross_total_cents=?, other_charges_cents=?, taxable_total_cents=?, cgst_rate=?, cgst_cents=?, sgst_rate=?, sgst_cents=?, igst_rate=?, igst_cents=?, round_off_cents=?, total_amount_cents=?, created_at=? WHERE id=?", values + (sale_id,))
             db.execute("DELETE FROM sales_details WHERE sales_id = ?", (sale_id,))
         db.executemany(
-            "INSERT INTO sales_details (sales_id, product_id, product_name, unit, hsn_code, quantity, unit_price_cents, line_total_cents) VALUES (?,?,?,?,?,?,?,?)",
-            [(sale_id, product["id"], product["name"], product["unit"], product["sku"], quantity, rate_cents, line_total) for product, quantity, rate_cents, line_total in lines],
+                        "INSERT INTO sales_details (sales_id, product_id, product_name, unit, hsn_code, quantity, unit_price_cents, line_total_cents, gst_rate, gst_cents, cgst_cents, sgst_cents, igst_cents, tax_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        [(sale_id, product["id"], product["name"], product["unit"], product["sku"], quantity, rate_cents, line_total,
+                            product["tax_rate"], gst["gst_cents"], gst["cgst_cents"], gst["sgst_cents"], gst["igst_cents"], gst["tax_type"])
+                         for product, quantity, rate_cents, line_total, gst in calculated_lines],
         )
         db.commit()
     except sqlite3.IntegrityError:
@@ -1442,7 +1613,7 @@ def _save_sale(sale_id=None):
         return render_template("sales_app.html", **_sales_form_context(), form_data=form.to_dict(flat=False), form_errors=["Database error."])
     session["company_id"] = company_id
     flash("Sales bill saved successfully.", "success")
-    return redirect(url_for("edit_sale", sale_id=sale_id))
+    return redirect(url_for("sales"))
 
 
 @app.route("/sales", methods=("GET", "POST"))
@@ -1499,7 +1670,7 @@ def _bill_data(sale_id):
     db = get_db()
     sale = db.execute(
         "SELECT s.*, c.name AS company_name, c.address AS company_address, c.phone AS company_phone, "
-        "c.mobile AS company_mobile, c.email AS company_email, c.tax_id AS company_tax_id, "
+        "c.mobile AS company_mobile, c.email AS company_email, c.tax_id AS company_tax_id, c.state AS company_state, "
         "c.tin_number, c.terms_conditions, c.state_code, c.pan_number, c.declaration, "
         "cu.name AS party_name, cu.billing_address, cu.city, cu.state, cu.postal_code, cu.phone AS party_phone, "
         "cu.email AS party_email, cu.tax_id AS party_tax_id FROM sales s "

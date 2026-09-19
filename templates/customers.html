@@ -37,6 +37,7 @@
                     <th>Tax ID</th>
                     <th>City</th>
                     <th>State</th>
+                    <th>Visibility</th>
                     <th>Status</th>
                     <th><span class="visually-hidden">Actions</span></th>
                 </tr>
@@ -51,6 +52,7 @@
                     <td>{{ customer.tax_id or '-' }}</td>
                     <td>{{ customer.city or '-' }}</td>
                     <td>{{ customer.state or '-' }}</td>
+                    <td>{{ 'All companies' if customer.shared_across_companies else 'Company only' }}</td>
                     <td><span class="status-pill status-{{ customer.status }}">{{ customer.status|capitalize }}</span>
                     </td>
                     <td class="table-actions"><a class="table-action"
@@ -61,7 +63,7 @@
                     </td>
                 </tr>{% endfor %}
                 <tr id="customer-empty-row" hidden>
-                    <td class="empty-table" colspan="9">No customers found.</td>
+                    <td class="empty-table" colspan="10">No customers found.</td>
                 </tr>
             </tbody>
         </table>

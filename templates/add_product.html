@@ -100,7 +100,7 @@
                 {% endif %}
             </div>
             <div class="mb-3 field-group {% if field_errors.get('tax_rate') %}has-error{% endif %}">
-                <label for="tax_rate">Tax rate <small>%</small></label>
+                <label for="tax_rate">GST/Tax Rate <small>%</small></label>
                 <input id="tax_rate" name="tax_rate" type="number" min="0" max="100" step="0.01"
                     value="{{ form_data.get('tax_rate', '0')|e }}" inputmode="decimal"
                     class="{% if field_errors.get('tax_rate') %}is-invalid{% endif %}">
@@ -156,6 +156,11 @@
                 <div class="field-error" role="alert">{{ field_errors.get('status') }}</div>
                 {% endif %}
             </div>
+            <label class="setting-row full-width-field" for="shared_across_companies"><span><strong>Share across
+                        companies</strong><small>Allow this product to appear for every company. Enabled by
+                        default.</small></span><input id="shared_across_companies" name="shared_across_companies"
+                    type="checkbox" {% if form_data.get('shared_across_companies', 1) in (1, '1' , 'on' , True)
+                    %}checked{% endif %}></label>
             <div class="mb-4 full-width-field field-group {% if field_errors.get('description') %}has-error{% endif %}">
                 <label for="description">Description</label>
                 <textarea id="description" name="description" rows="3" maxlength="500"
@@ -211,7 +216,7 @@
             return 'Cost price cannot be negative.';
         }
         if (name === 'tax_rate' && value && (!Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 100)) {
-            return 'Tax rate must be between 0 and 100.';
+            return 'GST/Tax Rate must be between 0 and 100.';
         }
         if (['stock_quantity', 'reorder_level'].includes(name) && value && (!Number.isInteger(Number(value)) || Number(value) < 0)) {
             return `${name === 'stock_quantity' ? 'Opening stock' : 'Reorder level'} must be a valid whole number.`;

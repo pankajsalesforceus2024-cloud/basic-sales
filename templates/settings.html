@@ -4,21 +4,14 @@
 <section class="workspace-panel settings-panel">
     <p class="eyebrow">App configuration</p>
     <h1>Workspace <em>settings.</em></h1>
-    <p class="dashboard-copy">Choose the company used when creating new sales bills and maintain its printed header.
-    </p>
+    <p class="dashboard-copy">Choose the company used when creating new sales bills. Edit company details from the
+        Company menu.</p>
     <form class="settings-form" method="post">
         <label class="setting-row setting-company-row" for="default_company_id"><span><strong>Default
                     company</strong><small>New bills will be created under this company.</small></span><select
                 id="default_company_id" name="default_company_id" required>{% for company in companies %}<option
                     value="{{ company.id }}" {% if company.id==default_company_id %}selected{% endif %}>{{ company.name
                     }}</option>{% endfor %}</select></label>
-        {% if selected_company %}<div class="company-profile-grid">
-            <label>Company Name<input name="company_name" value="{{ selected_company.name or '' }}" required></label>
-            <label>Company Address<input name="company_address" value="{{ selected_company.address or '' }}"></label>
-            <label>Phone<input name="company_phone" value="{{ selected_company.phone or '' }}"></label>
-            <label>Mobile<input name="company_mobile" value="{{ selected_company.mobile or '' }}"></label>
-            <label>GST No<input name="company_tax_id" value="{{ selected_company.tax_id or '' }}"></label>
-        </div>{% endif %}
         <label class="setting-row" for="sales_details_default_months"><span><strong>Sales details date
                     range</strong><small>Load bills from the last number of months by default.</small></span><input
                 id="sales_details_default_months" name="sales_details_default_months" type="number" min="1" step="1"
